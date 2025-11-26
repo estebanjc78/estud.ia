@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Alumno - {{ activity.tema }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <a href="{{ url_for('alumno_portal') }}" class="btn btn-ghost">&larr; Volver al resumen</a>
+    <h2 style="margin-top:8px;">{{ activity.tema }}</h2>
+    <p class="muted" style="margin-top:4px;">
+        {{ activity.objetivo }}
+    </p>
+    <p>
+        <span class="pill">Consigna</span>
+        {{ activity.consigna }}
+    </p>
+    <p class="muted">
+        Alumno: <strong>{{ alumno }}</strong> &nbsp;·&nbsp;
+        Ayudas usadas: <strong>{{ record.ayudas_usadas }}</strong> &nbsp;·&nbsp;
+        Puntos actuales: <strong>{{ record.puntos }}</strong>
+    </p>
+</div>
+
+<div class="grid-2">
+    <!-- Columna izquierda: preguntas y respuestas -->
+    <div class="card">
+        <h3>Responde las preguntas</h3>
+        <form method="POST">
+
+            {% for p in preguntas %}
+                {% set idx = loop.index0 %}
+                {% set key = idx|string %}
+                <div style="margin-bottom:12px;">
+                    <div style="font-weight:600; margin-bottom:4px;">
+                        Pregunta {{ loop.index }}:
+                    </div>
+                    <div class="muted" style="margin-bottom:4px;">
+                        {{ p }}
+                    </div>
+                    <textarea name="respuesta_{{ idx }}" placeholder="Escribe tu respuesta aquí...">{{ record.respuestas.get(key, "") }}</textarea>
+                </div>
+            {% endfor %}
+
+            <hr style="margin:16px 0; border:none; border-top:1px solid #e5e7eb;">
+
+            <h4>Pedir ayuda</h4>
+            <p class="muted">
+                Puedes pedir una ayuda en diferentes niveles (baja, media, alta) y estilos (visual, analítico, auditivo).
+                Cada ayuda resta puntos, pero te acompaña en el proceso.
+            </p>
+
+            <div style="margin-bottom:8px;">
+                <span class="muted">Nivel de ayuda</span>
+                <div class="toggle-group">
+                    <div>
+                        <input type="radio" id="tipo_baja" name="tipo_ayuda" value="baja" checked>
+                        <label for="tipo_baja">Baja</label>
+                    </div>
+                    <div>
+                        <input type="radio" id="tipo_media" name="tipo_ayuda" value="media">
+                        <label for="tipo_media">Media</label>
+                    </div>
+                    <div>
+                        <input type="radio" id="tipo_alta" name="tipo_ayuda" value="alta">
+                        <label for="tipo_alta">Alta</label>
+                    </div>
+                </div>
+                <p class="muted" style="margin-top:4px;">
+                    Baja = pista breve · Media = pasos guiados · Alta = explicación amplia.
+                </p>
+            </div>
+
+            <div style="margin-bottom:8px;">
+                <span class="muted">Estilo de ayuda</span>
+                <div class="toggle-group">
+                    <div>
+                        <input type="radio" id="estilo_visual" name="estilo" value="visual" checked>
+                        <label for="estilo_visual">Visual</label>
+                    </div>
+                    <div>
+                        <input type="radio" id="estilo_analitico" name="estilo" value="analitico">
+                        <label for="estilo_analitico">Analítico</label>
+                    </div>
+                    <div>
+                        <input type="radio" id="estilo_auditivo" name="estilo" value="auditivo">
+                        <label for="estilo_auditivo">Auditivo</label>
+                    </div>
+                </div>
+                <p class="muted" style="margin-top:4px;">
+                    Visual = mapa conceptual · Analítico = pasos · Auditivo = explicación en audio.
+                </p>
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                <button type="submit" name="action" value="help" class="btn btn-secondary">
+                    Pedir ayuda
+                </button>
+                <button type="submit" name="action" value="submit" class="btn btn-primary">
+                    Entregar actividad
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Columna derecha: ayudas recibidas -->
+    <div class="card">
+        <h3>Ayudas recibidas</h3>
+        {% if record.ayudas_recibidas %}
+            {% for ayuda in record.ayudas_recibidas %}
+                <div style="border:1px solid #e5e7eb; border-radius:10px; padding:8px 10px; margin-bottom:8px;">
+                    <div style="font-size:0.8rem; margin-bottom:4px;">
+                        <span class="pill">
+                            {{ ayuda.estilo|capitalize }} · {{ ayuda.tipo|upper }}
+                        </span>
+                        <span class="muted">
+                            &nbsp;· {{ ayuda.timestamp.strftime("%d/%m %H:%M") if ayuda.timestamp }}
+                        </span>
+                    </div>
+
+                    {% if ayuda.texto %}
+                        <pre style="white-space:pre-wrap; font-size:0.85rem; margin:0;">
+{{ ayuda.texto }}
+                        </pre>
+                    {% else %}
+                        <p class="muted" style="margin:0 0 4px 0;">
+                            Esta ayuda se ofrece en formato de audio.
+                        </p>
+                    {% endif %}
+
+                    {% if ayuda.audio %}
+                        <audio controls style="margin-top:4px; width:100%;">
+                            <source src="{{ ayuda.audio }}" type="audio/mpeg">
+                        </audio>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="muted">Todavía no has pedido ninguna ayuda. Puedes hacerlo desde el panel de la izquierda.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

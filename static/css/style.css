@@ -1,0 +1,274 @@
+/* RESET */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* COLORES */
+:root {
+  --header-bg: #1D3B40;
+  --sidebar-bg: #F3E3C8;
+  --page-bg: #F4EBDD;
+  --card-bg: #FFFFFF;
+  --accent: #2E7D6F;
+  --accent-soft: #D7EFE8;
+  --text-main: #1F2933;
+  --text-muted: #6B7280;
+  --border-soft: #E0D4C2;
+}
+
+/* BODY */
+body {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--page-bg);
+  color: var(--text-main);
+}
+
+/* TOPBAR */
+.topbar {
+  background: var(--header-bg);
+  color: white;
+  padding: 10px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topbar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: white;
+  color: var(--header-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.logo-text {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.topbar-nav {
+  display: flex;
+  gap: 24px;
+}
+
+.nav-link {
+  color: white;
+  text-decoration: none;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.nav-link:hover {
+  opacity: 1;
+}
+
+/* LAYOUT PRINCIPAL */
+.app-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
+  gap: 24px;
+  padding: 24px 32px 40px;
+}
+
+/* SIDEBAR */
+.sidebar {
+  background: var(--sidebar-bg);
+  border-radius: 12px;
+  padding: 18px 16px;
+}
+
+.sidebar-menu {
+  list-style: none;
+}
+
+.sidebar-item {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--text-main);
+  border-radius: 999px;
+}
+
+.sidebar-item-active {
+  background: var(--accent);
+  color: white;
+}
+
+/* MAIN PANEL */
+.main-panel {
+  min-height: 400px;
+}
+
+.main-panel h2 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.lesson-subtitle {
+  color: var(--text-muted);
+  margin-bottom: 18px;
+}
+
+/* CARDS */
+.card {
+  background: var(--card-bg);
+  border-radius: 14px;
+  padding: 20px 22px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+  border: 1px solid var(--border-soft);
+  margin-bottom: 18px;
+}
+
+/* FORM */
+label {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+input, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-soft);
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* BOTONES */
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 14px;
+  cursor: pointer;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+button:hover {
+  background: #246458;
+}
+
+.btn-secondary {
+  background: #E5E7EB;
+  color: #111827;
+}
+
+.btn-secondary:hover {
+  background: #D1D5DB;
+}
+
+.form-actions {
+  margin-top: 10px;
+}
+
+/* PREGUNTAS */
+.question-block {
+  margin-bottom: 14px;
+}
+
+.question-text {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* PILL OPTIONS (TIPO DE AYUDA Y MEDIO) */
+.option-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.option-group input[type="radio"] {
+  display: none;
+}
+
+.pill-option {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: #FAFAFA;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-main);
+}
+
+.option-group input[type="radio"]:checked + .pill-option {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* AYUDAS */
+.help-box {
+  background: var(--accent-soft);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.help-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.help-box img {
+  margin-top: 8px;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 220px;
+}
+
+/* RIGHT PANEL */
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.right-card h3 {
+  margin-bottom: 6px;
+}
+
+.progress-placeholder {
+  width: 100%;
+  height: 120px;
+  border-radius: 10px;
+  background: #E5E7EB;
+}
+
+/* PUNTOS */
+.points-label {
+  margin-top: 8px;
+  font-weight: 500;
+}
+
+/* FOOTER */
+.app-footer {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-bottom: 14px;
+}

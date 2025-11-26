@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Alumno - Resumen de actividades{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Resumen para {{ alumno }}</h2>
+    <p class="muted">
+        Estas son las actividades disponibles. Puedes entrar a cada una,
+        responder las consignas y pedir ayudas según lo necesites.
+    </p>
+</div>
+
+<div class="card">
+    {% if activities %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tema</th>
+                    <th>Consigna</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for act in activities %}
+                <tr>
+                    <td>#{{ act.id }}</td>
+                    <td>{{ act.tema }}</td>
+                    <td class="muted">{{ act.consigna[:80] }}{% if act.consigna|length > 80 %}...{% endif %}</td>
+                    <td>
+                        <a href="{{ url_for('alumno', activity_id=act.id, alumno=alumno) }}"
+                           class="btn btn-primary">
+                            Abrir actividad
+                        </a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">
+            Todavía no hay actividades creadas por el profesor.
+        </p>
+    {% endif %}
+</div>
+{% endblock %}

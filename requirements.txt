@@ -1,0 +1,157 @@
+📘 LISTADO AMPLIADO DE REQUERIMIENTOS — ESTUD.IA (Resumen conceptual a 18/11/2025)
+
+🟦 R1 — Identidad institucional
+
+R1.1 — La plataforma debe permitir cargar el logo del colegio.
+R1.2 — El nombre del colegio debe aparecer en el header.
+R1.3 — Tema visual configurable por colegio (colores y estilos).
+R1.4 — Nombre del profesor y alumno visibles según el rol.
+R1.5 — Arquitectura ya preparada para perfiles en el futuro.
+
+⸻
+
+🟧 R2 — Roles
+
+R2.1 — Rol PROFESOR: crea actividades, define ayudas, carga adjuntos.
+R2.2 — Rol ALUMNO: responde, pide ayudas, entrega tarea.
+R2.3 — En el MVP aún sin login, pero todo preparado para agregarlo.
+R2.4 — Cada vista debe tener elementos distintos según el rol.
+
+⸻
+
+🟩 R3 — Actividades del profesor
+
+R3.1 — Crear una actividad: tema, objetivo, consigna.
+R3.2 — Ingresar preguntas (una por línea).
+R3.3 — Subir archivos (PDF, imágenes, ejercicios, mapas, gráficos).
+R3.4 — Cada actividad queda guardada para que el alumno pueda acceder.
+R3.5 — Las actividades pueden tener ayudas predefinidas.
+
+⸻
+
+🟪 R4 — Ayudas del profesor (contenido base)
+
+R4.1 — El profesor define 3 niveles de ayuda base:
+	•	Baja (pista)
+	•	Media (pasos guiados)
+	•	Alta (guía profunda)
+
+R4.2 — Las ayudas base pueden ser creadas 100% por el profesor.
+R4.3 — O pueden ser sugeridas por IA y luego editadas por el profesor.
+R4.4 — El contenido final aprobado queda guardado en la actividad.
+R4.5 — Esto evita dependencia del modelo, mantiene coherencia pedagógica.
+R4.6 — Y evita que el alumno use ChatGPT directo (no coincide con lo que el profe diseñó).
+
+⸻
+
+🟫 R5 — Adaptación para el alumno (modelo híbrido)
+
+R5.1 — Cada alumno tiene un estilo de aprendizaje preferido:
+	•	Visual
+	•	Analítico
+	•	Auditivo
+(O se podrá ampliar: kinestésico, lector-escritor, etc.)
+
+R5.2 — La ayuda base del profesor se toma como fuente.
+R5.3 — La IA la transforma al estilo del alumno, no al contenido nuevo.
+R5.4 — El alumno recibe una explicación coherente con lo enseñado en clase.
+R5.5 — La ayuda adaptada depende de la elección del alumno.
+R5.6 — Esto mantiene la propuesta de valor:
+
+“La maestra enseña. La IA amplifica.”
+
+⸻
+
+🟨 R6 — Aprendizaje guiado con puntos
+
+R6.1 — Cada actividad empieza con puntaje base (ej. 100).
+R6.2 — Cada ayuda usada resta puntos (penalización configurable).
+R6.3 — El puntaje se actualiza en tiempo real.
+R6.4 — Entre menos ayudas, más puntos.
+R6.5 — Si el alumno entrega sin ayudas, obtiene el puntaje máximo.
+R6.6 — El sistema registra cuántas ayudas se usaron y de qué tipo.
+R6.7 — Esto incentiva aprender, no pedir respuestas.
+
+⸻
+
+🟦 R7 — Entrega de tareas (submit final)
+
+R7.1 — Botón “Enviar tarea”.
+R7.2 — Al enviar, la tarea se bloquea (no puede pedir más ayudas).
+R7.3 — Se guarda fecha y hora de entrega.
+R7.4 — La plataforma queda lista para que el profesor vea el feedback.
+R7.5 — Futuro: Corrección del profesor dentro de la plataforma.
+
+⸻
+
+🟧 R8 — Experiencia del alumno
+
+R8.1 — Ver actividad completa (tema, consigna, preguntas).
+R8.2 — Ver adjuntos del profesor.
+R8.3 — Responder cada pregunta en su cuadro correspondiente.
+R8.4 — Ver historial de ayudas recibidas.
+R8.5 — Ver estilo de aprendizaje configurado.
+R8.6 — Cambiar o elegir estilo antes de pedir ayuda.
+R8.7 — Record en pantalla de:
+	•	puntos actuales
+	•	ayudas usadas
+	•	progreso general
+R8.8 — Diseño limpio tipo tarjeta, como tu mockup.
+
+⸻
+
+🟩 R9 — Experiencia del profesor
+
+R9.1 — Ver actividades creadas.
+R9.2 — Crear nueva actividad.
+R9.3 — Editar ayudas.
+R9.4 — Panel para ver entregas (futuro).
+R9.5 — Panel para ver uso de ayudas por alumno (futuro).
+R9.6 — Preparar lecciones completas (futuro “Lesson Builder”).
+R9.7 — Subir y gestionar material multimedia.
+
+⸻
+
+🟪 R10 — Diseño UI estilo mockup
+
+R10.1 — Sidebar tipo dashboard (como en tus imágenes).
+R10.2 — Cards, barras, iconos, tipografía Poppins/Inter.
+R10.3 — Colores institucionales suaves (arena, verde petróleo).
+R10.4 — Layout 1440px tipo webapp moderna.
+R10.5 — Separación visual por rol (profesor/alumno).
+R10.6 — Logo del colegio en topbar.
+R10.7 — Sensación de producto premium/ed-tech.
+
+⸻
+
+🟫 R11 — Roadmap futuro inmediato
+
+R11.1 — Perfil del alumno (foto, nombre, estilo cognitivo).
+R11.2 — Perfil del profesor (materias, cursos, clases).
+R11.3 — Biblioteca de ayudas permanentes por materia.
+R11.4 — Sistema de recompensas escolares (día sin uniforme, etc.).
+R11.5 — Rank de uso de ayudas, gamificación liviana.
+R11.6 — Análisis de progreso por estudiante (dashboard).
+R11.7 — Módulo completo de preparación de clases.
+
+⸻
+
+🟧 R12 — Propuesta de valor (resumen para recordar)
+
+R12.1 — No es ChatGPT para alumnos.
+R12.2 — No reemplaza al profesor.
+R12.3 — La IA trabaja detrás del profesor.
+R12.4 — Lo que personaliza es el estilo, no el contenido.
+R12.5 — El producto enseña a aprender, no a copiar.
+R12.6 — Se integra al aula real (material del profesor, planificación auténtica).
+R12.7 — Es escalable a cualquier colegio y materia.
+
+⸻
+
+🧵 R13 — Detalle técnico conceptual
+
+R13.1 — La IA solo transforma cosas aprobadas por el profesor.
+R13.2 — Se evita fuga a ChatGPT porque el contenido base no coincide.
+R13.3 — Es un sistema híbrido: IA + didáctica del profesor.
+R13.4 — Los estudiantes tienen una experiencia realmente personalizada.
+R13.5 — En el futuro, esto se vuelve un “motor adaptativo” real.

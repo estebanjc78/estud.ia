@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Resumen de actividades - estud.ia{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+            <h2 style="margin-bottom:4px;">Resumen de actividades</h2>
+            <p class="muted" style="margin:0;">
+                Actividades creadas en el aula. Desde aquí puedes ir a la vista de profesor o probarlas como alumno.
+            </p>
+        </div>
+        <div>
+            <a href="{{ url_for('profe') }}" class="btn btn-primary">+ Crear actividad</a>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    {% if activities %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tema</th>
+                    <th>Consigna</th>
+                    <th>Objetivo</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for act in activities %}
+                <tr>
+                    <td>#{{ act.id }}</td>
+                    <td>{{ act.tema }}</td>
+                    <td>{{ act.consigna[:80] }}{% if act.consigna|length > 80 %}...{% endif %}</td>
+                    <td class="muted">{{ act.objetivo[:80] }}{% if act.objetivo|length > 80 %}...{% endif %}</td>
+                    <td>
+                        <a href="{{ url_for('profe_ayudas', activity_id=act.id) }}" class="btn btn-secondary">Ayudas</a>
+                        <a href="{{ url_for('alumno', activity_id=act.id, alumno='Estudiante') }}" class="btn btn-ghost">Ver como alumno</a>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">Todavía no hay actividades creadas. Usa el botón "Crear actividad" para comenzar.</p>
+    {% endif %}
+</div>
+{% endblock %}

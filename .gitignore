@@ -1,0 +1,23 @@
+# Entorno virtual
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Variables secretas
+.env
+
+# Base de datos local y carpeta instance completa
+instance/
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Uploads
+static/uploads/
+
+# VSCode
+.vscode/

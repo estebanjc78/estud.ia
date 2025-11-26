@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Activar Cuenta - Estud.ia</title>
+</head>
+<body>
+    <h1>Activar tu cuenta</h1>
+
+    <form method="POST" action="/api/activate/{{ token }}">
+        <label>Nueva contraseña:</label><br>
+        <input type="password" name="password" required>
+        <br><br>
+        <button type="submit">Activar cuenta</button>
+    </form>
+</body>
+</html>

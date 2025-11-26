@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Tareas - estud.ia{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Tareas (en construcción)</h2>
+    <p class="muted">
+        Aquí vamos a organizar las tareas por fecha, estado y tipo de actividad.
+        Por ahora verás la misma lista de actividades como referencia.
+    </p>
+</div>
+
+<div class="card">
+    {% if activities %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Tema</th>
+                    <th>Consigna</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for act in activities %}
+                <tr>
+                    <td>#{{ act.id }}</td>
+                    <td>{{ act.tema }}</td>
+                    <td class="muted">{{ act.consigna[:100] }}{% if act.consigna|length > 100 %}...{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted">No hay actividades por ahora.</p>
+    {% endif %}
+</div>
+{% endblock %}

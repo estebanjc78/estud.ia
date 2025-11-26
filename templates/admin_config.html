@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Config – Puntos y recompensas{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="card-header">Configuración de puntos y recompensas</div>
+    <p class="card-sub">Ajusta cuántos puntos da cada tipo de ayuda y qué recompensas ofrece el colegio.</p>
+
+    <form method="post">
+      <h4>Puntos por tipo de ayuda</h4>
+      <p>
+        <label>Paso a paso (analítica):</label><br>
+        <input type="number" name="p_pasos" value="{{ config.puntos_por_tipo.pasos }}">
+      </p>
+      <p>
+        <label>Visual / narrativa:</label><br>
+        <input type="number" name="p_visual" value="{{ config.puntos_por_tipo.visual }}">
+      </p>
+      <p>
+        <label>Solo pistas:</label><br>
+        <input type="number" name="p_pistas" value="{{ config.puntos_por_tipo.pistas }}">
+      </p>
+
+      <h4>Recompensas (hasta 3 en este MVP)</h4>
+      {% for i in range(3) %}
+        {% set idx = i + 1 %}
+        {% set recompensa = config.recompensas[i] if i < config.recompensas|length else None %}
+        <div style="border:1px solid #e0e0e0; border-radius:10px; padding:8px 10px; margin-bottom:8px;">
+          <strong>Recompensa {{ idx }}</strong><br>
+          <label>Nombre:</label><br>
+          <input type="text" name="r{{ idx }}_nombre"
+                 value="{{ recompensa.nombre if recompensa else '' }}" style="width:260px;"><br>
+          <label>Puntos necesarios:</label><br>
+          <input type="number" name="r{{ idx }}_puntos"
+                 value="{{ recompensa.puntos if recompensa else '' }}">
+        </div>
+      {% endfor %}
+
+      <button type="submit" class="btn btn-primary">Guardar cambios</button>
+    </form>
+  </div>
+{% endblock %}
+
+{% block right_panel %}
+  <div class="card">
+    <div class="card-header">Nota</div>
+    <p class="card-sub">
+      En una siguiente versión, estas configuraciones podrán ser distintas por curso o por profesor.
+    </p>
+  </div>
+{% endblock %}

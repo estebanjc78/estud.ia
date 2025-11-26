@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Profesor{% endblock %}
+
+{% block content %}
+  <div class="card">
+    <div class="card-header">Resumen de clase – Actividades y puntos</div>
+    <p class="card-sub">
+      Aquí ves qué estudiantes están usando las ayudas, cuántos puntos llevan y cuántas respuestas han guardado.
+    </p>
+
+    {% if resumen %}
+      <table style="width:100%; border-collapse:collapse; font-size:0.9rem; margin-top:10px;">
+        <thead>
+          <tr style="background:#f3f3f5;">
+            <th style="padding:6px; text-align:left;">Actividad</th>
+            <th style="padding:6px; text-align:left;">Alumno</th>
+            <th style="padding:6px; text-align:left;">Ayudas</th>
+            <th style="padding:6px; text-align:left;">Respuestas</th>
+            <th style="padding:6px; text-align:left;">Puntos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in resumen %}
+            <tr>
+              <td style="padding:6px;">{{ r.actividad_tema }}</td>
+              <td style="padding:6px;">{{ r.alumno }}</td>
+              <td style="padding:6px;">{{ r.cant_ayudas }}</td>
+              <td style="padding:6px;">{{ r.cant_respuestas }}</td>
+              <td style="padding:6px;">{{ r.puntos_total }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="card-sub">Todavía no hay actividad de estudiantes registrada.</p>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block right_panel %}
+  <div class="card">
+    <div class="card-header">Recompensas configuradas</div>
+    <ul style="padding-left:18px; font-size:0.9rem;">
+      {% for r in config.recompensas %}
+        <li>🎁 {{ r.nombre }} — desde {{ r.puntos }} pts</li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endblock %}

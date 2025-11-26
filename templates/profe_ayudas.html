@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Profesor - Ayudas para {{ activity.tema }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <a href="{{ url_for('profe') }}" class="btn btn-ghost">&larr; Volver a actividades</a>
+    <h2 style="margin-top:8px;">Ayudas base para la actividad #{{ activity.id }}</h2>
+    <p class="muted">
+        <span class="pill">Tema</span> {{ activity.tema }}<br>
+        <span class="pill">Consigna</span> {{ activity.consigna }}
+    </p>
+</div>
+
+<div class="card">
+    <form method="POST">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h3 style="margin:0;">Ayudas del profesor</h3>
+            <div>
+                <button type="submit" name="action" value="generate" class="btn btn-secondary">
+                    Generar automáticamente
+                </button>
+                <button type="submit" name="action" value="save" class="btn btn-primary">
+                    Guardar cambios
+                </button>
+            </div>
+        </div>
+
+        <p class="muted" style="margin-top:0;">
+            Estas ayudas son la base “neutra” que luego se adaptará al estilo del alumno (visual, analítico, auditivo).
+        </p>
+
+        <label for="ayuda_baja">Ayuda BAJA (pista breve)</label>
+        <textarea id="ayuda_baja" name="ayuda_baja">{{ activity.ayudas_baja or "" }}</textarea>
+
+        <br><br>
+        <label for="ayuda_media">Ayuda MEDIA (pasos guiados)</label>
+        <textarea id="ayuda_media" name="ayuda_media">{{ activity.ayudas_media or "" }}</textarea>
+
+        <br><br>
+        <label for="ayuda_alta">Ayuda ALTA (explicación profunda)</label>
+        <textarea id="ayuda_alta" name="ayuda_alta">{{ activity.ayudas_alta or "" }}</textarea>
+
+    </form>
+</div>
+{% endblock %}
