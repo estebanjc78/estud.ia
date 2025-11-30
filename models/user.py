@@ -39,4 +39,4 @@ class Profile(db.Model):
 
     user = db.relationship("User", back_populates="profiles")
     institution = db.relationship("Institution", back_populates="profiles")
-    section = db.relationship("Section", back_populates="students")
+    section = db.relationship("Section", back_populates="students") 

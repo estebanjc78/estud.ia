@@ -1,20 +1,195 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-    <title>Login</title>
-    <meta charset="utf-8" />
+    <meta charset="UTF-8" />
+    <title>Iniciar sesión – estud.ia</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Hoja de estilos principal -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* --- Estilos específicos de la pantalla de login --- */
+
+        body.login-body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f5efe6; /* beige suave, neutral para cualquier colegio */
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .login-wrapper {
+            width: 100%;
+            max-width: 420px;
+            padding: 24px;
+        }
+
+        .login-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 32px 28px;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.10);
+            box-sizing: border-box;
+        }
+
+        .login-logo {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .login-logo img {
+            width: 100px;
+            height: 100px;
+            object-fit: contain;
+        }
+
+        .login-logo-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .login-logo-subtitle {
+            font-size: 1rem;
+            color: #6b7280;
+        }
+
+        .login-title {
+            font-size: 1.35rem;
+            font-weight: 600;
+            margin: 8px 0 4px;
+        }
+
+        .login-subtitle {
+            font-size: 0.9rem;
+            color: #6b7280;
+            margin-bottom: 20px;
+        }
+
+        .login-form-group {
+            margin-bottom: 16px;
+        }
+
+        .login-form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: #374151;
+        }
+
+        .login-input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #d1d5db;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+        }
+
+        .login-input:focus {
+            outline: none;
+            border-color: #0f766e; /* petróleo/verde profundo estud.ia */
+            box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.2);
+        }
+
+        .login-actions {
+            margin-top: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .login-button {
+            width: 100%;
+            border: none;
+            border-radius: 999px;
+            padding: 11px 16px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: #0f766e; /* tono petróleo */
+            color: white;
+            transition: transform 0.08s ease-out, box-shadow 0.08s ease-out, background 0.15s;
+        }
+
+        .login-button:hover {
+            background: #115e57;
+            box-shadow: 0 10px 24px rgba(15, 118, 110, 0.35);
+            transform: translateY(-1px);
+        }
+
+        .login-meta {
+            margin-top: 12px;
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-align: center;
+        }
+
+        @media (max-width: 480px) {
+            .login-card {
+                padding: 24px 20px;
+            }
+        }
+    </style>
 </head>
-<body>
-    <h2>Iniciar sesión</h2>
+<body class="login-body">
+    <div class="login-wrapper">
+        <div class="login-card">
+            <div class="login-logo">
+                <img src="/static/img/estudia_logo.png" class="login-logo">
+                <div class="login-logo-title">estud.ia</div>
+                <div class="login-logo-subtitle">Potenciando la enseñanza</div>
+            </div>
 
-    <form method="POST" action="/auth/login">
-        <label>Email:</label><br>
-        <input type="email" name="email" required><br><br>
+            <h1 class="login-title">Bienvenido</h1>
+            <p class="login-subtitle">
+                Inicia sesión para continuar con tu aula personalizada.
+            </p>
 
-        <label>Contraseña:</label><br>
-        <input type="password" name="password" required><br><br>
+            <form method="post" action="{{ url_for('auth.login_submit') }}">
+                <div class="login-form-group">
+                    <label for="email">Correo electrónico</label>
+                    <input
+                        type="email"
+                        id="email"
+                        name="email"
+                        class="login-input"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
 
-        <button type="submit">Entrar</button>
-    </form>
+                <div class="login-form-group">
+                    <label for="password">Contraseña</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        class="login-input"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+
+                <div class="login-actions">
+                    <button type="submit" class="login-button">
+                        Entrar a estud.ia
+                    </button>
+                </div>
+            </form>
+
+            <div class="login-meta">
+                Acceso asignado por tu institución educativa.
+            </div>
+        </div>
+    </div>
 </body>
 </html>
