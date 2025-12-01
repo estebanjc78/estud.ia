@@ -5,13 +5,16 @@ from models import BitacoraEntrada, Profile, Lesson
 from . import api_bp
 from datetime import datetime
 
+from api.services.attachment_service import AttachmentService
+from api.utils.attachments_helper import serialize_attachment
+
 
 def _can_write(author_profile: Profile):
     """
     Verifica si el rol del autor permite escribir en la bitácora.
     Por simplicidad: PROFESOR y PSICOPEDAGOGO.
     """
-    return author_profile.role.name in ["PROFESOR", "PSICOPEDAGOGO", "ADMIN"]
+    return author_profile.role.name in ["PROFESOR", "PSICOPEDAGOGIA", "ADMIN", "PSICOPEDAGOGO"]
 
 
 @api_bp.post("/bitacora")
@@ -77,12 +80,29 @@ def bitacora_create():
     )
 
     db.session.add(entry)
+    db.session.flush()
+
+    attachments_payload = data.get("attachments")
+    created_attachments = AttachmentService.bulk_create_from_payloads(
+        context_type="bitacora",
+        context_id=entry.id,
+        payloads=attachments_payload,
+        uploaded_by_profile_id=author_profile.id,
+        default_kind="bitacora_evidence",
+    )
+
     db.session.commit()
 
-    return jsonify({
-        "status": "created",
-        "bitacora_id": entry.id
-    }), 201
+    return (
+        jsonify(
+            {
+                "status": "created",
+                "bitacora_id": entry.id,
+                "attachments": [serialize_attachment(a) for a in created_attachments],
+            }
+        ),
+        201,
+    )
 
 
 @api_bp.get("/bitacora/<int:student_profile_id>")
@@ -115,16 +135,18 @@ def bitacora_list(student_profile_id):
 
     entries = query.order_by(BitacoraEntrada.created_at.desc()).all()
 
-    return jsonify([
-        {
-            "id": e.id,
-            "categoria": e.categoria,
-            "nota": e.nota,
-            "lesson_id": e.lesson_id,
-            "created_at": str(e.created_at),
-            "visible_para_padres": e.visible_para_padres,
-            "visible_para_alumno": e.visible_para_alumno,
-            "author_profile_id": e.author_profile_id,
-        }
-        for e in entries
-    ])
+    return jsonify([_serialize_entry(e) for e in entries])
+
+
+def _serialize_entry(entry: BitacoraEntrada) -> dict:
+    return {
+        "id": entry.id,
+        "categoria": entry.categoria,
+        "nota": entry.nota,
+        "lesson_id": entry.lesson_id,
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
+        "visible_para_padres": entry.visible_para_padres,
+        "visible_para_alumno": entry.visible_para_alumno,
+        "author_profile_id": entry.author_profile_id,
+        "attachments": [serialize_attachment(att) for att in (entry.attachments or [])],
+    }

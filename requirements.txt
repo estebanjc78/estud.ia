@@ -155,3 +155,7 @@ R13.2 — Se evita fuga a ChatGPT porque el contenido base no coincide.
 R13.3 — Es un sistema híbrido: IA + didáctica del profesor.
 R13.4 — Los estudiantes tienen una experiencia realmente personalizada.
 R13.5 — En el futuro, esto se vuelve un “motor adaptativo” real.
+
+R14 - AI 
+
+R14.1 - Poder guardar los reportes generados con AI en insights

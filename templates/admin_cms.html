@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}CMS Institucional{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:8px;">
+    <div class="pill">CMS Estud.ia</div>
+    <h1 style="margin:0;">Personaliza la identidad del colegio</h1>
+    <p class="muted" style="margin:0;">
+        Actualiza logo, colores y recompensas para que toda la experiencia refleje la marca institucional.
+    </p>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if institutions|length > 1 %}
+<div class="card">
+    <form method="get" style="display:flex; gap:12px; align-items:center;">
+        <label>Seleccionar institución</label>
+        <select name="institution_id">
+            {% for inst in institutions %}
+                <option value="{{ inst.id }}" {% if inst.id == institution.id %}selected{% endif %}>{{ inst.name }}</option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-secondary" type="submit">Ver</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="card">
+    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+        <input type="hidden" name="institution_id" value="{{ institution.id }}">
+        <div style="grid-column:1 / -1;">
+            <label>Nombre del colegio</label>
+            <input type="text" name="name" value="{{ institution.name }}" required>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Logo (URL)</label>
+            <input type="text" name="logo_url" value="{{ institution.logo_url or '' }}" placeholder="https://...">
+        </div>
+        <div>
+            <label>Color primario (#HEX)</label>
+            <input type="text" name="primary_color" value="{{ institution.primary_color or '#1F4B99' }}">
+        </div>
+        <div>
+            <label>Color secundario (#HEX)</label>
+            <input type="text" name="secondary_color" value="{{ institution.secondary_color or '#9AB3FF' }}">
+        </div>
+
+        <div style="grid-column:1 / -1;">
+            <h3>Recompensas (hasta 3)</h3>
+        </div>
+        {% for idx in range(3) %}
+            {% set recompensa = recompensas[idx] if idx < recompensas|length else None %}
+            <div style="border:1px solid var(--brand-border); border-radius:12px; padding:12px;">
+                <label>Nombre</label>
+                <input type="text" name="reward_{{ idx + 1 }}_name" value="{{ recompensa.nombre if recompensa else '' }}">
+                <label style="margin-top:8px;">Puntos</label>
+                <input type="number" min="0" name="reward_{{ idx + 1 }}_points" value="{{ recompensa.puntos if recompensa else '' }}">
+            </div>
+        {% endfor %}
+
+        <div style="grid-column:1 / -1; margin-top:8px;">
+            <button class="btn btn-primary" type="submit">Guardar cambios</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Vista previa</h3>
+    <p class="muted">Así se verá el header con la configuración actual.</p>
+    <div style="margin-top:12px; padding:14px; border-radius:16px; background: linear-gradient(120deg, {{ institution.primary_color or '#1F4B99' }}, {{ institution.secondary_color or '#9AB3FF' }}); color:white;">
+        <div style="font-size:0.8rem; text-transform:uppercase; letter-spacing:0.08em;">
+            {{ institution.name }}
+        </div>
+        <div style="font-size:1.1rem; font-weight:600;">estud.ia · aula digital</div>
+    </div>
+</div>
+{% endblock %}

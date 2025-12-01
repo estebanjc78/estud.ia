@@ -1,4 +1,4 @@
-from flask import request, render_template, redirect
+from flask import request, render_template, redirect, url_for
 from datetime import datetime
 from werkzeug.security import generate_password_hash
 from extensions import db
@@ -40,4 +40,4 @@ def activate_submit(token):
 
     db.session.commit()
 
-    return redirect("/login")
+    return redirect(url_for("auth.login_form"))

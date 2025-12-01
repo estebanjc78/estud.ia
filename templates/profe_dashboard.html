@@ -1,50 +1,247 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard Profesor{% endblock %}
+{% block title %}Panel del Profesor{% endblock %}
 
-{% block content %}
-  <div class="card">
-    <div class="card-header">Resumen de clase – Actividades y puntos</div>
-    <p class="card-sub">
-      Aquí ves qué estudiantes están usando las ayudas, cuántos puntos llevan y cuántas respuestas han guardado.
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:8px;">
+    <div class="pill">Panel profesor</div>
+    <h1 style="margin:0;">Hola {{ current_user.email.split('@')[0] }}, esto es lo que pasa hoy</h1>
+    <p class="muted" style="margin:0;">
+        El tablero reúne actividad de clases, uso de ayudas y mensajes clave para que puedas tomar decisiones rápidas.
     </p>
-
-    {% if resumen %}
-      <table style="width:100%; border-collapse:collapse; font-size:0.9rem; margin-top:10px;">
-        <thead>
-          <tr style="background:#f3f3f5;">
-            <th style="padding:6px; text-align:left;">Actividad</th>
-            <th style="padding:6px; text-align:left;">Alumno</th>
-            <th style="padding:6px; text-align:left;">Ayudas</th>
-            <th style="padding:6px; text-align:left;">Respuestas</th>
-            <th style="padding:6px; text-align:left;">Puntos</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in resumen %}
-            <tr>
-              <td style="padding:6px;">{{ r.actividad_tema }}</td>
-              <td style="padding:6px;">{{ r.alumno }}</td>
-              <td style="padding:6px;">{{ r.cant_ayudas }}</td>
-              <td style="padding:6px;">{{ r.cant_respuestas }}</td>
-              <td style="padding:6px;">{{ r.puntos_total }}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="card-sub">Todavía no hay actividad de estudiantes registrada.</p>
-    {% endif %}
-  </div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+        <a class="btn btn-primary" href="{{ url_for('tareas') }}">Crear tarea</a>
+        <a class="btn btn-secondary" href="#">Nueva nota de bitácora</a>
+    </div>
+</div>
 {% endblock %}
 
-{% block right_panel %}
-  <div class="card">
-    <div class="card-header">Recompensas configuradas</div>
-    <ul style="padding-left:18px; font-size:0.9rem;">
-      {% for r in config.recompensas %}
-        <li>🎁 {{ r.nombre }} — desde {{ r.puntos }} pts</li>
-      {% endfor %}
-    </ul>
-  </div>
+{% block content %}
+<div class="grid two">
+    <div class="card">
+        <h2>Clases de hoy</h2>
+        <p class="muted">Próximas sesiones programadas según tu plan.</p>
+        <table>
+            <thead>
+            <tr>
+                <th>Clase</th>
+                <th>Sección</th>
+                <th>Horario</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for clase in clases_hoy or [] %}
+                <tr>
+                    <td>{{ clase.title }}</td>
+                    <td>{{ clase.section.name if clase.section else "Sin sección" }}</td>
+                    <td>{{ clase.start_time or "--" }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="3" class="muted">No registramos clases para hoy.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Alertas rápidas</h2>
+        <ul style="padding-left:18px; margin:0;">
+            <li class="muted">Sin entregas atrasadas detectadas.</li>
+            <li class="muted">Aún no configuraste mensajes a familias.</li>
+        </ul>
+    </div>
+</div>
+
+<div class="card">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div>
+            <h2 style="margin:0;">Uso de ayudas y puntos</h2>
+            <p class="muted" style="margin:4px 0;">Monitoreá a quién acompañar antes de la próxima clase.</p>
+        </div>
+        <div class="pill">Tiempo real</div>
+    </div>
+
+    <table style="margin-top:8px;">
+        <thead>
+        <tr>
+            <th>Actividad</th>
+            <th>Alumno</th>
+            <th>Ayudas</th>
+            <th>Respuestas</th>
+            <th>Puntos</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for r in resumen or [] %}
+            <tr>
+                <td>{{ r.actividad_tema }}</td>
+                <td>{{ r.alumno }}</td>
+                <td>{{ r.cant_ayudas }}</td>
+                <td>{{ r.cant_respuestas }}</td>
+                <td>{{ r.puntos_total }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" class="muted">Todavía no hay actividad de estudiantes registrada.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="grid two">
+    <div class="card" id="bitacora">
+        <h2 style="margin-top:0;">Nueva entrada de bitácora</h2>
+        <form method="post" action="{{ url_for('crear_bitacora') }}" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:10px;">
+            <label>Alumno</label>
+            <select name="student_profile_id" required>
+                <option value="">Selecciona</option>
+                {% for student in students %}
+                    <option value="{{ student.id }}">{{ student.full_name }}</option>
+                {% endfor %}
+            </select>
+
+            <label>Clase</label>
+            <select name="lesson_id">
+                <option value="">Sin clase</option>
+                {% for lesson in lessons or [] %}
+                    <option value="{{ lesson.id }}">{{ lesson.title }} ({{ lesson.class_date }})</option>
+                {% endfor %}
+            </select>
+
+            <label>Categoría</label>
+            <select name="categoria">
+                <option value="APRENDIZAJE">Aprendizaje</option>
+                <option value="DISCIPLINA">Disciplina</option>
+                <option value="EMOCIONAL">Emocional</option>
+                <option value="OTRO">Otro</option>
+            </select>
+
+            <label>Nota</label>
+            <textarea name="nota" placeholder="Describe lo observado" required></textarea>
+
+            <label>Archivo (opcional)</label>
+            <input type="file" name="bitacora_attachment">
+
+            <div>
+                <label><input type="checkbox" name="visible_para_padres" checked> Visible para padres</label><br>
+                <label><input type="checkbox" name="visible_para_alumno"> Visible para alumno</label>
+            </div>
+
+            <button class="btn btn-primary" type="submit">Guardar bitácora</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0;">Enviar mensaje</h2>
+        <form method="post" action="{{ url_for('enviar_mensaje_manual') }}" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:10px;">
+            <label>Clase (opcional)</label>
+            <select name="lesson_id">
+                <option value="">Mensaje general</option>
+                {% for lesson in lessons or [] %}
+                    <option value="{{ lesson.id }}">{{ lesson.title }} · {{ lesson.class_date }}</option>
+                {% endfor %}
+            </select>
+
+            <label>Asunto</label>
+            <input type="text" name="mensaje_asunto" placeholder="Ej: Recordatorio evaluación">
+            <small class="muted">Si elegís una clase, el asunto se completa automáticamente.</small>
+
+            <label>Destinatarios</label>
+            <div class="recipient-quick">
+                <span class="muted">Selección rápida</span>
+                <div class="chip-row">
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:students">
+                        Todos los alumnos
+                    </label>
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:parents">
+                        Familias
+                    </label>
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:staff">
+                        Equipo
+                    </label>
+                </div>
+            </div>
+            <select name="recipient_profile_ids" multiple size="6">
+                {% for group in recipient_groups or [] %}
+                    <optgroup label="{{ group.label }}">
+                        {% for person in group.profiles %}
+                            <option value="{{ person.id }}">{{ person.full_name }}{% if person.role %} · {{ person.role.value | title }}{% endif %}</option>
+                        {% endfor %}
+                    </optgroup>
+                {% endfor %}
+            </select>
+            <small class="muted">Podés seleccionar grupos completos con las chips o elegir personas puntuales. Si dejás todo vacío, enviaremos solo a la clase.</small>
+
+            <label>Mensaje</label>
+            <textarea name="mensaje_texto" placeholder="Comparte información con familias" required></textarea>
+
+            <label>Visibilidad</label>
+            <input type="hidden" name="visible_student_present" value="1">
+            <label><input type="checkbox" name="visible_student" value="1" checked> Alumno</label>
+            <input type="hidden" name="visible_parent_present" value="1">
+            <label><input type="checkbox" name="visible_parent" value="1" checked> Familia</label>
+            <input type="hidden" name="visible_teacher_present" value="1">
+            <label><input type="checkbox" name="visible_teacher" value="1" checked> Equipo docente</label>
+
+            <label>Adjunto (opcional)</label>
+            <input type="file" name="mensaje_attachment">
+            <small class="muted">Ideal para boletines, notas informativas o PDFs.</small>
+
+            <button class="btn btn-secondary" type="submit">Enviar mensaje</button>
+        </form>
+    </div>
+</div>
+
+<div class="grid two">
+    <div class="card">
+        <h2 style="margin-top:0;">Bitácora reciente</h2>
+        {% if bitacora_entries %}
+            <ul style="padding-left:18px; margin:0;">
+                {% for entry in bitacora_entries %}
+                    <li style="margin-bottom:8px;">
+                        <strong>{{ entry.student_profile.full_name if entry.student_profile else "Alumno" }}</strong>
+                        <span class="muted">· {{ entry.created_at.strftime("%d/%m %H:%M") if entry.created_at }}</span>
+                        <div>{{ entry.nota }}</div>
+                        {% if entry.attachments %}
+                            <div class="muted">
+                                Adjuntos:
+                                {% for att in entry.attachments %}
+                                    <a href="{{ att.storage_path }}" target="_blank">{{ att.filename }}</a>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="muted">Sin registros recientes.</p>
+        {% endif %}
+    </div>
+    <div class="card">
+        <h2 style="margin-top:0;">Mensajes recientes</h2>
+        {% if recent_messages %}
+            <ul style="padding-left:18px; margin:0;">
+                {% for message in recent_messages %}
+                    <li style="margin-bottom:8px;">
+                        <strong>{{ message.sender.full_name if message.sender else "Perfil" }}</strong>
+                        <span class="muted">· {{ message.created_at.strftime("%d/%m %H:%M") if message.created_at }}</span>
+                        <div>{{ message.text }}</div>
+                        {% if message.attachments %}
+                            <div class="muted">
+                                Adjuntos:
+                                {% for att in message.attachments %}
+                                    <a href="{{ att.storage_path }}" target="_blank">{{ att.filename }}</a>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="muted">Aún no enviaste mensajes.</p>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}

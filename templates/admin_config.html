@@ -1,52 +1,90 @@
 {% extends "base.html" %}
 
-{% block title %}Config – Puntos y recompensas{% endblock %}
+{% block title %}Administración de usuarios{% endblock %}
 
-{% block content %}
-  <div class="card">
-    <div class="card-header">Configuración de puntos y recompensas</div>
-    <p class="card-sub">Ajusta cuántos puntos da cada tipo de ayuda y qué recompensas ofrece el colegio.</p>
-
-    <form method="post">
-      <h4>Puntos por tipo de ayuda</h4>
-      <p>
-        <label>Paso a paso (analítica):</label><br>
-        <input type="number" name="p_pasos" value="{{ config.puntos_por_tipo.pasos }}">
-      </p>
-      <p>
-        <label>Visual / narrativa:</label><br>
-        <input type="number" name="p_visual" value="{{ config.puntos_por_tipo.visual }}">
-      </p>
-      <p>
-        <label>Solo pistas:</label><br>
-        <input type="number" name="p_pistas" value="{{ config.puntos_por_tipo.pistas }}">
-      </p>
-
-      <h4>Recompensas (hasta 3 en este MVP)</h4>
-      {% for i in range(3) %}
-        {% set idx = i + 1 %}
-        {% set recompensa = config.recompensas[i] if i < config.recompensas|length else None %}
-        <div style="border:1px solid #e0e0e0; border-radius:10px; padding:8px 10px; margin-bottom:8px;">
-          <strong>Recompensa {{ idx }}</strong><br>
-          <label>Nombre:</label><br>
-          <input type="text" name="r{{ idx }}_nombre"
-                 value="{{ recompensa.nombre if recompensa else '' }}" style="width:260px;"><br>
-          <label>Puntos necesarios:</label><br>
-          <input type="number" name="r{{ idx }}_puntos"
-                 value="{{ recompensa.puntos if recompensa else '' }}">
-        </div>
-      {% endfor %}
-
-      <button type="submit" class="btn btn-primary">Guardar cambios</button>
-    </form>
-  </div>
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Usuarios</div>
+    <h1 style="margin:0;">Gestiona perfiles del colegio</h1>
+    <p class="muted" style="margin:0;">
+        Crea cuentas nuevas, asigna roles y resetea contraseñas desde este panel.
+    </p>
+</div>
 {% endblock %}
 
-{% block right_panel %}
-  <div class="card">
-    <div class="card-header">Nota</div>
-    <p class="card-sub">
-      En una siguiente versión, estas configuraciones podrán ser distintas por curso o por profesor.
-    </p>
-  </div>
+{% block content %}
+<div class="card">
+    <h2 style="margin:0;">Usuarios existentes</h2>
+    <table style="margin-top:10px;">
+        <thead>
+        <tr>
+            <th>Email</th>
+            <th>Perfiles</th>
+            <th>Acciones</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for usuario in usuarios %}
+            <tr>
+                <td>{{ usuario.email }}</td>
+                <td>
+                    {% for perfil in perfiles_por_user.get(usuario.id, []) %}
+                        <div class="pill" style="margin-bottom:4px;">
+                            {{ perfil.full_name }} · {{ perfil.role.name }}
+                        </div>
+                    {% else %}
+                        <span class="muted">Sin perfil</span>
+                    {% endfor %}
+                </td>
+                <td>
+                    <form method="post" action="{{ url_for('admin.admin_reset_password', user_id=usuario.id) }}" style="display:flex; gap:6px;">
+                        <input type="text" name="new_password" placeholder="nueva pass" required>
+                        <button class="btn btn-secondary" type="submit">Reset</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0;">Nuevo usuario</h2>
+    {% if not has_institutions %}
+        <p class="muted">Necesitas crear una institución desde <a href="{{ url_for('admin.admin_structure') }}">Estructura escolar</a> antes de registrar usuarios.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('admin.admin_crear_usuario') }}" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <div>
+            <label>Email</label>
+            <input type="text" name="email" required>
+        </div>
+        <div>
+            <label>Contraseña</label>
+            <input type="text" name="password" required>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Nombre completo</label>
+            <input type="text" name="full_name" required>
+        </div>
+        <div>
+            <label>Rol</label>
+            <select name="role" required>
+                {% for role in roles %}
+                    <option value="{{ role.name }}">{{ role.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Institución</label>
+            <select name="institution_id" {% if not has_institutions %}disabled{% endif %} required>
+                {% for inst in instituciones %}
+                    <option value="{{ inst.id }}">{{ inst.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit" {% if not has_institutions %}disabled{% endif %}>Crear usuario</button>
+        </div>
+    </form>
+</div>
 {% endblock %}

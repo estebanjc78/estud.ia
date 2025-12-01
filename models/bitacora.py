@@ -1,5 +1,8 @@
 from datetime import datetime
 from enum import Enum
+
+from sqlalchemy.orm import foreign
+
 from extensions import db
 
 
@@ -71,3 +74,10 @@ class BitacoraEntrada(db.Model):
 
     lesson = db.relationship("Lesson", backref="bitacora_entradas")
     institution = db.relationship("Institution", backref="bitacora_entradas")
+    attachments = db.relationship(
+        "Attachment",
+        primaryjoin="and_(foreign(Attachment.context_id) == BitacoraEntrada.id, "
+                    "Attachment.context_type == 'bitacora')",
+        viewonly=True,
+        lazy="selectin",
+    )

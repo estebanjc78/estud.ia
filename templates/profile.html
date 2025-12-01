@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Perfil{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Perfil del usuario</div>
+    <h1 style="margin:0;">{{ profile.full_name }}</h1>
+    <p class="muted" style="margin:0;">
+        Rol: {{ profile.role.name if profile.role else "—" }}
+        · {{ profile.institution.name if profile.institution else "Sin institución" }}
+    </p>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2>Actualizar datos</h2>
+    <form method="post" action="{{ url_for('perfil') }}" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <input type="hidden" name="action" value="update_profile">
+        <div style="grid-column:1 / -1;">
+            <label>Nombre completo</label>
+            <input type="text" name="full_name" value="{{ profile.full_name }}" required>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">Guardar datos</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Cambiar contraseña</h2>
+    <form method="post" action="{{ url_for('perfil') }}" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <input type="hidden" name="action" value="change_password">
+        <div>
+            <label>Contraseña actual</label>
+            <input type="password" name="current_password" required>
+        </div>
+        <div>
+            <label>Nueva contraseña</label>
+            <input type="password" name="new_password" required>
+        </div>
+        <div>
+            <label>Confirmación</label>
+            <input type="password" name="confirm_password" required>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-secondary" type="submit">Actualizar contraseña</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

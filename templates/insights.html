@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Insights{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Insights con IA</div>
+    <h1 style="margin:0;">Radiografía del aprendizaje</h1>
+    <p class="muted" style="margin:0;">Combinamos datos reales con una narrativa lista para compartir con directivos o familias.</p>
+    <div style="background:rgba(33,85,205,0.08); border-radius:12px; padding:12px 16px; margin-top:6px;">
+        <strong>Resumen inteligente:</strong> {{ ai_brief }}
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="grid three">
+    <div class="card stats">
+        <span class="muted">Tareas activas</span>
+        <h2>{{ metrics.tasks_total }}</h2>
+    </div>
+    <div class="card stats">
+        <span class="muted">Entregas registradas</span>
+        <h2>{{ metrics.submissions_total }}</h2>
+    </div>
+    <div class="card stats">
+        <span class="muted">Promedio de puntos</span>
+        <h2>{{ metrics.average_points or "—" }}</h2>
+    </div>
+</div>
+
+<div class="grid two">
+    <div class="card">
+        <h2 style="margin-top:0;">Ayudas utilizadas</h2>
+        <div style="display:flex; gap:16px;">
+            {% for level, total in metrics.help_usage.items() %}
+                <div style="flex:1; text-align:center; border:1px solid var(--brand-border); border-radius:12px; padding:12px;">
+                    <div class="muted">{{ level.title() }}</div>
+                    <div style="font-size:1.4rem; font-weight:600;">{{ total }}</div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0;">Próximas clases</h2>
+        <ul style="margin:0; padding-left:18px;">
+            {% for lesson in metrics.lessons_upcoming or [] %}
+                <li>
+                    <strong>{{ lesson.class_date or "Fecha por definir" }}</strong> · {{ lesson.title }}
+                </li>
+            {% else %}
+                <li class="muted">No hay clases próximas registradas.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<div class="grid two">
+    <div class="card">
+        <h2 style="margin-top:0;">Alumnos a monitorear</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>Alumno</th>
+                <th>Promedio</th>
+                <th>Ayudas</th>
+                <th>Sugerencia</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for student in metrics.students_flagged %}
+                <tr>
+                    <td>{{ student.profile.full_name if student.profile else "Alumno" }}</td>
+                    <td>{{ student.avg_points or "—" }}</td>
+                    <td>{{ student.help_count }}</td>
+                    <td>{{ student.suggestions[0] }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="4" class="muted">Sin alertas por ahora.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+<div class="card">
+    <h2 style="margin-top:0;">Tendencias en bitácora (30 días)</h2>
+        <ul style="margin:0; padding-left:18px;">
+            {% for item in metrics.bitacora_summary %}
+                <li>{{ item.categoria }} · {{ item.total }} registros</li>
+            {% else %}
+                <li class="muted">Aún no se registraron notas recientes.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0;">Generar reporte con IA</h2>
+    <p class="muted" style="margin-top:0;">Seleccioná el alcance y dejá que la IA redacte un borrador editable.</p>
+    <div class="grid three">
+        <form method="post" action="{{ url_for('create_insight_report') }}" style="display:flex; flex-direction:column; gap:8px;">
+            <input type="hidden" name="scope" value="global">
+            <strong>Reporte global</strong>
+            <p class="muted">Estado general del curso/institución.</p>
+            <label>Enfoque</label>
+            <select name="report_flavor">
+                {% for flavor in report_flavors %}
+                    <option value="{{ flavor.value }}">{{ flavor.label }}</option>
+                {% endfor %}
+            </select>
+            <label>Indicaciones personalizadas</label>
+            <textarea name="custom_prompt" rows="2" placeholder="Ej: Enfatizar logros del área de Ciencias"></textarea>
+            <button class="btn btn-secondary" type="submit">Generar</button>
+        </form>
+        <form method="post" action="{{ url_for('create_insight_report') }}" style="display:flex; flex-direction:column; gap:8px;">
+            <input type="hidden" name="scope" value="class">
+            <strong>Reporte por clase</strong>
+            <select name="target_id" required>
+                <option value="">Selecciona clase</option>
+                {% for lesson in lessons %}
+                    <option value="{{ lesson.id }}">{{ lesson.class_date }} · {{ lesson.title }}</option>
+                {% endfor %}
+            </select>
+            <label>Enfoque</label>
+            <select name="report_flavor">
+                {% for flavor in report_flavors %}
+                    <option value="{{ flavor.value }}">{{ flavor.label }}</option>
+                {% endfor %}
+            </select>
+            <label>Indicaciones personalizadas</label>
+            <textarea name="custom_prompt" rows="2" placeholder="Ej: Comparar con la clase anterior"></textarea>
+            <button class="btn btn-secondary" type="submit">Generar</button>
+        </form>
+        <form method="post" action="{{ url_for('create_insight_report') }}" style="display:flex; flex-direction:column; gap:8px;">
+            <input type="hidden" name="scope" value="student">
+            <strong>Reporte individual</strong>
+            <select name="target_id" required>
+                <option value="">Selecciona alumno</option>
+                {% for student in students %}
+                    <option value="{{ student.id }}">{{ student.full_name }}</option>
+                {% endfor %}
+            </select>
+            <label>Enfoque</label>
+            <select name="report_flavor">
+                {% for flavor in report_flavors %}
+                    <option value="{{ flavor.value }}">{{ flavor.label }}</option>
+                {% endfor %}
+            </select>
+            <label>Indicaciones personalizadas</label>
+            <textarea name="custom_prompt" rows="2" placeholder="Ej: Detallar recomendaciones para la familia"></textarea>
+            <button class="btn btn-secondary" type="submit">Generar</button>
+        </form>
+    </div>
+</div>
+
+{% for report in reports %}
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
+            <div>
+                <strong>{{ report.scope.value|title }}</strong>
+                <span class="muted">· {{ report.target_label or "Institución" }}</span><br>
+                <small class="muted">Actualizado {{ report.updated_at.strftime("%d/%m %H:%M") if report.updated_at }}</small>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <a class="btn btn-link" href="{{ url_for('download_insight_report', report_id=report.id) }}">Descargar</a>
+            </div>
+        </div>
+        <form method="post" action="{{ url_for('save_insight_report', report_id=report.id) }}" style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+            <textarea name="final_text" rows="8" style="width:100%; border-radius:12px; border:1px solid var(--brand-border); padding:12px;">{{ report.final_text or report.ai_draft }}</textarea>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <select name="status">
+                    <option value="draft" {% if report.status == "draft" %}selected{% endif %}>Borrador</option>
+                    <option value="ready" {% if report.status == "ready" %}selected{% endif %}>Listo para enviar</option>
+                </select>
+                <button class="btn btn-primary" type="submit">Guardar cambios</button>
+            </div>
+        </form>
+        <form method="post" action="{{ url_for('send_insight_report', report_id=report.id) }}" style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+            <label>Destinatarios</label>
+            <div class="recipient-quick">
+                <span class="muted">Selección rápida</span>
+                <div class="chip-row">
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:students">
+                        Todos los alumnos
+                    </label>
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:parents">
+                        Familias
+                    </label>
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:staff">
+                        Equipo
+                    </label>
+                </div>
+            </div>
+            <select name="recipient_profile_ids" multiple size="4">
+                {% for group in recipient_groups or [] %}
+                    <optgroup label="{{ group.label }}">
+                        {% for person in group.profiles %}
+                            <option value="{{ person.id }}">{{ person.full_name }}{% if person.role %} · {{ person.role.value | title }}{% endif %}</option>
+                        {% endfor %}
+                    </optgroup>
+                {% endfor %}
+            </select>
+            <label>Asunto</label>
+            <input type="text" name="subject" placeholder="Reporte académico" value="Reporte {{ report.target_label or report.scope.value|title }}">
+            <button class="btn btn-secondary" type="submit">Enviar por Mensajes</button>
+        </form>
+    </div>
+{% else %}
+    <div class="card">
+        <p class="muted">Aún no generaste reportes con IA.</p>
+    </div>
+{% endfor %}
+{% endblock %}

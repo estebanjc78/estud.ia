@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Mensajería{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Comunicaciones</div>
+    <h1 style="margin:0;">Mensajería institucional</h1>
+    <p class="muted" style="margin:0;">
+        Centralizá mensajes con alumnos, familias y equipo. Adjuntá boletines, confirma destinatarios y definí visibilidad por rol.
+    </p>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="grid two">
+    <div class="card">
+        <h2 style="margin-top:0;">Conversaciones recientes</h2>
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            {% for thread in threads %}
+                <div style="border:1px solid var(--brand-border); border-radius:14px; padding:12px 14px;">
+                    <div style="display:flex; justify-content:space-between; gap:10px;">
+                        <strong>{{ thread.subject }}</strong>
+                        {% if thread.context %}
+                            <span class="pill">{{ thread.context|replace('_', ' ')|title }}</span>
+                        {% endif %}
+                    </div>
+                    {% if thread.last_message %}
+                        <p class="muted" style="margin:6px 0 0;">
+                            {{ thread.last_message.sender.full_name if thread.last_message.sender else "Perfil" }}:
+                            {{ thread.last_message.text[:140] }}{% if thread.last_message.text|length > 140 %}...{% endif %}
+                        </p>
+                        {% if thread.updated_at %}
+                            <small class="muted">Actualizado {{ thread.updated_at.strftime("%d/%m %H:%M") }}</small>
+                        {% endif %}
+                    {% else %}
+                        <p class="muted" style="margin:6px 0 0;">Sin mensajes todavía.</p>
+                    {% endif %}
+                    {% if thread.participants %}
+                        <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:6px;">
+                            {% for participant in thread.participants %}
+                                <span class="pill" style="background:rgba(33,85,205,0.1); color:#2155CD;">{{ participant }}</span>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </div>
+            {% else %}
+                <p class="muted">Todavía no participaste en conversaciones.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0;">Nuevo mensaje</h2>
+        <form method="post" action="{{ url_for('enviar_mensaje_manual') }}" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:10px;">
+            <label>Clase (opcional)</label>
+            <select name="lesson_id">
+                <option value="">Mensaje general</option>
+                {% for lesson in lessons or [] %}
+                    <option value="{{ lesson.id }}">{{ lesson.title }} · {{ lesson.class_date }}</option>
+                {% endfor %}
+            </select>
+
+            <label>Asunto</label>
+            <input type="text" name="mensaje_asunto" placeholder="Ej: Boletín trimestral">
+
+            <label>Destinatarios</label>
+            <div class="recipient-quick">
+                <span class="muted">Selección rápida</span>
+                <div class="chip-row">
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:students">
+                        Todos los alumnos
+                    </label>
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:parents">
+                        Familias
+                    </label>
+                    <label class="chip">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:staff">
+                        Equipo completo
+                    </label>
+                </div>
+            </div>
+            <select name="recipient_profile_ids" multiple size="8">
+                {% for group in recipient_groups or [] %}
+                    <optgroup label="{{ group.label }}">
+                        {% for person in group.profiles %}
+                            <option value="{{ person.id }}">{{ person.full_name }}{% if person.role %} · {{ person.role.value | title }}{% endif %}</option>
+                        {% endfor %}
+                    </optgroup>
+                {% endfor %}
+            </select>
+            <small class="muted">Marcá un grupo completo con las chips o elegí personas puntuales en la lista. Dejar todo vacío enviará solo a la clase seleccionada.</small>
+
+            <label>Mensaje</label>
+            <textarea name="mensaje_texto" placeholder="Escribe la comunicación" required></textarea>
+
+            <label>Visibilidad</label>
+            <input type="hidden" name="visible_student_present" value="1">
+            <label><input type="checkbox" name="visible_student" value="1" checked> Alumno</label>
+            <input type="hidden" name="visible_parent_present" value="1">
+            <label><input type="checkbox" name="visible_parent" value="1" checked> Familia</label>
+            <input type="hidden" name="visible_teacher_present" value="1">
+            <label><input type="checkbox" name="visible_teacher" value="1" checked> Equipo docente</label>
+
+            <label>Adjunto (opcional)</label>
+            <input type="file" name="mensaje_attachment">
+            <small class="muted">Perfecto para boletines, circulares o material PDF.</small>
+
+            <button class="btn btn-primary" type="submit">Enviar mensaje</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

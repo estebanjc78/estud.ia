@@ -1,5 +1,8 @@
 # models/messages.py
 from datetime import datetime
+
+from sqlalchemy.orm import foreign
+
 from extensions import db
 
 
@@ -15,11 +18,17 @@ class MessageThread(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
+    subject = db.Column(db.String(255), nullable=True)
+
     # contexto opcional
     context_type = db.Column(db.String(50), nullable=True)
     context_id = db.Column(db.Integer, nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    is_archived = db.Column(db.Boolean, default=False)
 
     # relaciones
     messages = db.relationship(
@@ -32,7 +41,7 @@ class MessageThread(db.Model):
         "MessageThreadParticipant",
         back_populates="thread",
         cascade="all, delete-orphan",
-        lazy="dynamic",
+        lazy="selectin",
     )
 
 
@@ -56,6 +65,7 @@ class MessageThreadParticipant(db.Model):
         nullable=False,
     )
 
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
     # metadata útil a futuro
     last_read_at = db.Column(db.DateTime, nullable=True)
 
@@ -92,3 +102,9 @@ class Message(db.Model):
 
     thread = db.relationship("MessageThread", back_populates="messages")
     sender = db.relationship("Profile")
+    attachments = db.relationship(
+        "Attachment",
+        primaryjoin="and_(foreign(Attachment.context_id) == Message.id, Attachment.context_type == 'message')",
+        viewonly=True,
+        lazy="selectin",
+    )

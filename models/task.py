@@ -1,4 +1,7 @@
 from datetime import datetime
+
+from sqlalchemy.orm import foreign
+
 from extensions import db
 
 
@@ -26,6 +29,9 @@ class Task(db.Model):
     # Fecha de entrega
     due_date = db.Column(db.Date, nullable=True)
 
+    # Puntaje máximo de la tarea
+    max_points = db.Column(db.Integer, nullable=True)
+
     # Metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -34,3 +40,14 @@ class Task(db.Model):
     lesson = db.relationship("Lesson", backref="tasks")
     objective = db.relationship("Objective", backref="tasks")
     section = db.relationship("Section", backref="tasks")
+    submissions = db.relationship(
+        "TaskSubmission",
+        back_populates="task",
+        cascade="all, delete-orphan",
+    )
+    attachments = db.relationship(
+        "Attachment",
+        primaryjoin="and_(foreign(Attachment.context_id) == Task.id, Attachment.context_type == 'task')",
+        viewonly=True,
+        lazy="selectin",
+    )

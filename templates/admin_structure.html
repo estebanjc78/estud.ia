@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Estructura escolar{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Administración</div>
+    <h1 style="margin:0;">Define la estructura del colegio</h1>
+    <p class="muted" style="margin:0;">
+        Creá instituciones, grados y secciones para que los planes de estudio y las clases se vinculen al contexto correcto.
+    </p>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if can_create_institution %}
+<div class="card">
+    <h2 style="margin-top:0;">Nueva institución</h2>
+    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <input type="hidden" name="action" value="create_institution">
+        <div style="grid-column:1 / -1;">
+            <label>Nombre</label>
+            <input type="text" name="name" placeholder="Colegio Demo" required>
+        </div>
+        <div>
+            <label>Código corto</label>
+            <input type="text" name="short_code" placeholder="DEMO">
+        </div>
+        <div>
+            <label>Logo (URL)</label>
+            <input type="text" name="logo_url" placeholder="https://...">
+        </div>
+        <div>
+            <label>Color primario (#HEX)</label>
+            <input type="text" name="primary_color" value="#1F4B99">
+        </div>
+        <div>
+            <label>Color secundario (#HEX)</label>
+            <input type="text" name="secondary_color" value="#9AB3FF">
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">Crear institución</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+
+{% if institutions %}
+<div class="card">
+    <form method="get" style="display:flex; gap:12px; align-items:center;">
+        <label>Institución activa</label>
+        <select name="institution_id">
+            {% for inst in institutions %}
+                <option value="{{ inst.id }}" {% if selected_institution and inst.id == selected_institution.id %}selected{% endif %}>
+                    {{ inst.name }}
+                </option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-secondary" type="submit">Cambiar</button>
+    </form>
+    {% if selected_institution %}
+        <div style="margin-top:12px;">
+            <strong>{{ selected_institution.name }}</strong>
+            {% if selected_institution.short_code %}
+                <span class="pill">{{ selected_institution.short_code }}</span>
+            {% endif %}
+            <p class="muted" style="margin:4px 0 0;">
+                Colores actuales: {{ selected_institution.primary_color or "—" }} · {{ selected_institution.secondary_color or "—" }}
+            </p>
+            <p class="muted" style="margin:4px 0 0;">
+                Tip: Una vez que tengas grados y secciones, visitá <a href="{{ url_for('plan_view') }}">Plan de estudio</a> para cargar los contenidos.
+            </p>
+        </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0;">Grados y secciones</h2>
+    {% if grades %}
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+            {% for grade in grades %}
+                <div style="border:1px solid var(--brand-border); border-radius:12px; padding:12px;">
+                    <div style="font-weight:600;">{{ grade.name }}</div>
+                    {% if grade.level %}
+                        <div class="muted">{{ grade.level }}</div>
+                    {% endif %}
+                    <div style="margin-top:8px;">
+                        <strong>Secciones</strong>
+                        <ul style="margin:6px 0 0 16px; padding:0;">
+                            {% for section in grade.sections %}
+                                <li>{{ section.name }}</li>
+                            {% else %}
+                                <li class="muted">Sin secciones aún.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="muted">Todavía no hay grados creados. Usa el formulario para agregar el primero.</p>
+    {% endif %}
+</div>
+
+{% if selected_institution %}
+<div class="card">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
+        <div>
+            <h3 style="margin-top:0;">Agregar grado</h3>
+            <form method="post" style="display:flex; flex-direction:column; gap:10px;">
+                <input type="hidden" name="action" value="create_grade">
+                <input type="hidden" name="target_institution_id" value="{{ selected_institution.id }}">
+                <label>Nombre</label>
+                <input type="text" name="grade_name" placeholder="3° Básico" required>
+                <label>Nivel / descripción</label>
+                <input type="text" name="grade_level" placeholder="Primaria">
+                <label>Orden (opcional)</label>
+                <input type="number" name="grade_order" min="0">
+                <button class="btn btn-primary" type="submit">Guardar grado</button>
+            </form>
+        </div>
+        <div>
+            <h3 style="margin-top:0;">Agregar sección</h3>
+            <form method="post" style="display:flex; flex-direction:column; gap:10px;">
+                <input type="hidden" name="action" value="create_section">
+                <input type="hidden" name="target_institution_id" value="{{ selected_institution.id }}">
+                <label>Grado</label>
+                <select name="grade_id" {% if not grades %}disabled{% endif %}>
+                    {% for grade in grades %}
+                        <option value="{{ grade.id }}">{{ grade.name }}</option>
+                    {% endfor %}
+                </select>
+                <label>Nombre de la sección</label>
+                <input type="text" name="section_name" placeholder="A" {% if not grades %}disabled{% endif %}>
+                <button class="btn btn-secondary" type="submit" {% if not grades %}disabled{% endif %}>Guardar sección</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% else %}
+    <div class="card">
+        <p class="muted">Aún no hay instituciones para gestionar. Usa el formulario superior para crear la primera.</p>
+    </div>
+{% endif %}
+{% endblock %}

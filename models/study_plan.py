@@ -15,6 +15,7 @@ class StudyPlan(db.Model):
 
     # Relación con objetivos
     objectives = db.relationship("Objective", back_populates="study_plan", cascade="all, delete-orphan")
+    grade = db.relationship("Grade")
 
 
 class Objective(db.Model):
@@ -31,6 +32,7 @@ class Objective(db.Model):
     order_index = db.Column(db.Integer, nullable=True)
     start_date = db.Column(db.Date, nullable=True)
     end_date = db.Column(db.Date, nullable=True)
+    period_label = db.Column(db.String(100), nullable=True)
 
     study_plan = db.relationship("StudyPlan", back_populates="objectives")
 

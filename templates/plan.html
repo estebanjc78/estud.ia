@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Plan de estudio{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Planificación anual</div>
+    <h1 style="margin:0;">Plan de estudio y objetivos</h1>
+    <p class="muted" style="margin:0;">
+        Organiza los objetivos pedagógicos por períodos de tiempo y programa clases alineadas a cada objetivo.
+    </p>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 style="margin-top:0;">Planes activos</h2>
+    {% if plans %}
+        {% for card in plans %}
+            <div style="border:1px solid var(--brand-border); border-radius:16px; padding:16px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                    <div>
+                        <h3 style="margin:0;">{{ card.plan.name }} {% if card.plan.year %}({{ card.plan.year }}){% endif %}</h3>
+                        <p class="muted" style="margin:4px 0 0;">
+                            Grado: {{ card.plan.grade.name if card.plan.grade else "Sin grado" }}
+                            · {{ card.plan.description or "Sin descripción" }}
+                        </p>
+                    </div>
+                    <div class="pill">{{ card.plan.objectives|length }} objetivos</div>
+                </div>
+                {% if card.timeline %}
+                    <div style="margin-top:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                            <strong>Vista calendario</strong>
+                            <span class="muted">{{ card.timeline.start }} → {{ card.timeline.end }}</span>
+                        </div>
+                        <div style="position:relative; margin-top:8px; border:1px dashed var(--brand-border); border-radius:14px; padding:18px 12px;">
+                            <div style="position:relative; height:80px;">
+                                {% for entry in card.timeline.entries %}
+                                    <div style="
+                                        position:absolute;
+                                        left:{{ entry.left }}%;
+                                        width:{{ entry.width }}%;
+                                        min-width:6%;
+                                        max-width:100%;
+                                        background:rgba(33,85,205,0.15);
+                                        border:1px solid rgba(33,85,205,0.4);
+                                        border-radius:10px;
+                                        padding:8px;
+                                        box-shadow:0 6px 12px rgba(15,23,42,0.08);
+                                    ">
+                                        <div style="font-weight:600; font-size:0.9rem;">{{ entry.title }}</div>
+                                        <div style="font-size:0.75rem; color:#475569;">
+                                            {{ entry.start }} → {{ entry.end }}
+                                            {% if entry.period %}
+                                                · {{ entry.period }}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            <div style="margin-top:8px; display:flex; justify-content:space-between; font-size:0.75rem; color:#64748b;">
+                                <span>{{ card.timeline.start }}</span>
+                                <span>{{ card.timeline.end }}</span>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+                {% for period in card.periods %}
+                    <div style="margin-top:16px;">
+                        <h4 style="margin:0 0 8px;">{{ period.label }}</h4>
+                        <div style="display:flex; flex-direction:column; gap:12px;">
+                            {% for objective in period.objectives %}
+                                <div style="border:1px solid var(--brand-border); border-radius:12px; padding:12px;">
+                                    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+                                        <strong>{{ objective.title }}</strong>
+                                        {% if objective.start_date or objective.end_date %}
+                                            <span class="pill">
+                                                {{ objective.start_date or "?" }} → {{ objective.end_date or "?" }}
+                                            </span>
+                                        {% endif %}
+                                    </div>
+                                    <p class="muted" style="margin:6px 0 10px;">{{ objective.description or "Sin descripción" }}</p>
+                                    <div>
+                                        <span class="muted">Clases programadas:</span>
+                                        <ul style="margin:6px 0 0 16px;">
+                                            {% for lesson in objective.lessons %}
+                                                <li>
+                                                    <strong>{{ lesson.class_date or "Fecha por definir" }}</strong> · {{ lesson.title }}
+                                                    {% if lesson.section %} ({{ lesson.section.name }}){% endif %}
+                                                </li>
+                                            {% else %}
+                                                <li class="muted">Sin clases programadas.</li>
+                                            {% endfor %}
+                                        </ul>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p class="muted">Todavía no creaste planes de estudio para esta institución.</p>
+    {% endif %}
+</div>
+
+{% if can_edit %}
+<div class="grid two">
+    <div class="card">
+        <h3 style="margin-top:0;">Crear plan</h3>
+        <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
+            <input type="hidden" name="action" value="create_plan">
+            <div>
+                <label>Nombre</label>
+                <input type="text" name="plan_name" required>
+            </div>
+            <div>
+                <label>Año lectivo</label>
+                <input type="number" name="plan_year" placeholder="2025">
+            </div>
+            <div>
+                <label>Grado</label>
+                <select name="grade_id" required>
+                    <option value="">Selecciona</option>
+                    {% for grade in grades %}
+                        <option value="{{ grade.id }}">{{ grade.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="grid-column:1 / -1;">
+                <label>Descripción</label>
+                <textarea name="plan_description" placeholder="Descripción general del plan"></textarea>
+            </div>
+            <div style="grid-column:1 / -1;">
+                <button class="btn btn-primary" type="submit">Guardar plan</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">Agregar objetivo</h3>
+        <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
+            <input type="hidden" name="action" value="create_objective">
+            <div style="grid-column:1 / -1;">
+                <label>Plan</label>
+                <select name="plan_id" required>
+                    <option value="">Selecciona</option>
+                    {% for plan in plan_options %}
+                        <option value="{{ plan.id }}">{{ plan.name }} {% if plan.year %}({{ plan.year }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Título</label>
+                <input type="text" name="objective_title" required>
+            </div>
+            <div>
+                <label>Etiqueta de período</label>
+                <input type="text" name="period_label" placeholder="Ej: Marzo, Trimestre 1">
+            </div>
+            <div>
+                <label>Inicio</label>
+                <input type="date" name="objective_start">
+            </div>
+            <div>
+                <label>Fin</label>
+                <input type="date" name="objective_end">
+            </div>
+            <div>
+                <label>Orden</label>
+                <input type="number" name="objective_order" min="0">
+            </div>
+            <div style="grid-column:1 / -1;">
+                <label>Descripción</label>
+                <textarea name="objective_description"></textarea>
+            </div>
+            <div style="grid-column:1 / -1;">
+                <button class="btn btn-secondary" type="submit">Agregar objetivo</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Programar clase para un objetivo</h3>
+    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
+        <input type="hidden" name="action" value="create_lesson">
+        <div style="grid-column:1 / -1;">
+            <label>Objetivo</label>
+            <select name="objective_id" required>
+                <option value="">Selecciona</option>
+                {% for objective in objective_choices %}
+                    <option value="{{ objective.id }}">
+                        {{ objective.study_plan.name if objective.study_plan else "Plan" }} · {{ objective.title }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Título de la clase</label>
+            <input type="text" name="lesson_title" required>
+        </div>
+        <div>
+            <label>Fecha</label>
+            <input type="date" name="lesson_date" required>
+        </div>
+        <div>
+            <label>Hora inicio</label>
+            <input type="time" name="lesson_start_time">
+        </div>
+        <div>
+            <label>Hora fin</label>
+            <input type="time" name="lesson_end_time">
+        </div>
+        <div>
+            <label>Sección</label>
+            <select name="section_id">
+                <option value="">General</option>
+                {% for section in sections %}
+                    <option value="{{ section.id }}">{{ section.name }} ({{ section.grade.name }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Descripción / agenda</label>
+            <textarea name="lesson_description"></textarea>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">Programar clase</button>
+        </div>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

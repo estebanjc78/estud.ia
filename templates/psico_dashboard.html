@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Psicopedagogía{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Equipo psicopedagógico</div>
+    <h1 style="margin:0;">Seguimiento de alumnos</h1>
+    <p class="muted" style="margin:0;">
+        Consulta bitácora, entregas y ayudas utilizadas por cada estudiante. Registra nuevas notas de sesión con evidencia.
+    </p>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h2 style="margin-top:0;">Indicadores por alumno</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Alumno</th>
+                <th>Última entrega</th>
+                <th>Ayudas usadas</th>
+                <th>Bitácora reciente</th>
+                <th>Tareas pendientes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for student in students %}
+                {% set last_submission = student.last_submission %}
+                {% set last_bitacora = student.last_bitacora %}
+                <tr>
+                    <td>
+                        <strong>{{ student.profile.full_name }}</strong><br>
+                        <span class="muted">{{ student.profile.section.name if student.profile.section else "Sin sección" }}</span>
+                    </td>
+                    <td>
+                        {% if last_submission %}
+                            {{ last_submission.task.title if last_submission.task else "Tarea" }}<br>
+                            <span class="muted">{{ last_submission.submitted_at.strftime("%d/%m %H:%M") if last_submission.submitted_at }}</span>
+                        {% else %}
+                            <span class="muted">Sin entregas</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if last_submission %}
+                            {{ last_submission.help_level or "Sin ayuda" }} · {{ last_submission.help_count or 0 }} usos
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if last_bitacora %}
+                            {{ last_bitacora.categoria.value if last_bitacora.categoria else last_bitacora.categoria }}<br>
+                            <span class="muted">{{ last_bitacora.nota[:60] }}{% if last_bitacora.nota|length > 60 %}...{% endif %}</span>
+                        {% else %}
+                            <span class="muted">Sin registros</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ student.pending_tasks }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="5" class="muted">No encontramos alumnos en esta institución.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="grid two">
+    <div class="card">
+        <h3 style="margin-top:0;">Registrar nota de sesión</h3>
+        <form method="post" action="{{ url_for('crear_bitacora_psico') }}" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+            <div style="grid-column:1 / -1;">
+                <label>Alumno</label>
+                <select name="student_profile_id" required>
+                    <option value="">Selecciona</option>
+                    {% for student in student_choices %}
+                        <option value="{{ student.id }}">{{ student.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Categoría</label>
+                <select name="categoria">
+                    <option value="APRENDIZAJE">Aprendizaje</option>
+                    <option value="EMOCIONAL">Emocional</option>
+                    <option value="DISCIPLINA">Disciplina</option>
+                    <option value="OTRO">Otro</option>
+                </select>
+            </div>
+            <div>
+                <label>Clase relacionada (opcional)</label>
+                <select name="lesson_id">
+                    <option value="">Sin clase</option>
+                    {% for lesson in lessons %}
+                        <option value="{{ lesson.id }}">{{ lesson.class_date }} · {{ lesson.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="grid-column:1 / -1;">
+                <label>Nota</label>
+                <textarea name="nota" placeholder="Observaciones de la sesión" required></textarea>
+            </div>
+            <div>
+                <label>Adjunto (opcional)</label>
+                <input type="file" name="bitacora_attachment">
+            </div>
+            <div>
+                <label><input type="checkbox" name="visible_para_padres" checked> Mostrar a padres</label><br>
+                <label><input type="checkbox" name="visible_para_alumno"> Mostrar al alumno</label>
+            </div>
+            <div style="grid-column:1 / -1;">
+                <button class="btn btn-primary" type="submit">Guardar nota</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">Bitácora reciente</h3>
+        {% for student in students %}
+            {% for entry in student.bitacora_entries %}
+                <div style="border-bottom:1px solid var(--brand-border); padding:8px 0;">
+                    <strong>{{ student.profile.full_name }}</strong>
+                    <span class="muted">· {{ entry.created_at.strftime("%d/%m %H:%M") if entry.created_at }}</span>
+                    <div>{{ entry.nota }}</div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <p class="muted">Sin notas registradas.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

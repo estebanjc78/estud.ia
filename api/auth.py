@@ -55,7 +55,7 @@ def login_submit():
     if profile.role.name == "ALUMNO":
         return redirect(url_for("alumno_portal"))
 
-    if profile.role.name == "ADMIN":
+    if profile.role.name in ("ADMIN", "ADMIN_COLEGIO"):
         return redirect(url_for("admin.admin_usuarios"))
 
     # Fallback
@@ -70,3 +70,93 @@ def login_submit():
 def logout():
     logout_user()
     return redirect(url_for("auth.login_form"))
+
+
+# ----------------------------------------------
+# PERFIL DEL USUARIO (VER / EDITAR)
+# ----------------------------------------------
+@auth_bp.get("/profile")
+@login_required
+def profile():
+    """
+    Muestra la pantalla de perfil del usuario:
+    - email (User)
+    - nombre completo, rol, institución (Profile)
+    """
+    profile = Profile.query.filter_by(user_id=current_user.id).first()
+
+    return render_template(
+        "profile.html",
+        user=current_user,
+        profile=profile,
+    )
+
+
+@auth_bp.post("/profile")
+@login_required
+def update_profile():
+    """
+    Actualiza datos básicos del perfil (por ahora solo full_name).
+    """
+    profile = Profile.query.filter_by(user_id=current_user.id).first()
+
+    if not profile:
+        flash("No se encontró un perfil asociado al usuario.", "error")
+        return redirect(url_for("auth.profile"))
+
+    full_name = (request.form.get("full_name") or "").strip()
+
+    if not full_name:
+        flash("El nombre no puede estar vacío.", "error")
+        return redirect(url_for("auth.profile"))
+
+    profile.full_name = full_name
+    db.session.commit()
+
+    flash("Perfil actualizado correctamente.", "success")
+    return redirect(url_for("auth.profile"))
+
+
+# ----------------------------------------------
+# CAMBIO DE CONTRASEÑA PROPIO
+# ----------------------------------------------
+@auth_bp.post("/change_password")
+@login_required
+def change_password():
+    """
+    Permite al usuario cambiar su propia contraseña.
+
+    Espera por POST (form HTML):
+      - current_password
+      - new_password
+      - confirm_password
+    """
+    current_password = (request.form.get("current_password") or "").strip()
+    new_password = (request.form.get("new_password") or "").strip()
+    confirm_password = (request.form.get("confirm_password") or "").strip()
+
+    if not current_password or not new_password or not confirm_password:
+        flash("Todos los campos de contraseña son obligatorios.", "error")
+        return redirect(url_for("auth.profile"))
+
+    # Validar contraseña actual
+    if not current_user.check_password(current_password):
+        flash("La contraseña actual no es correcta.", "error")
+        return redirect(url_for("auth.profile"))
+
+    # Validar coincidencia
+    if new_password != confirm_password:
+        flash("La nueva contraseña y su confirmación no coinciden.", "error")
+        return redirect(url_for("auth.profile"))
+
+    # Validar longitud mínima básica
+    if len(new_password) < 8:
+        flash("La nueva contraseña debe tener al menos 8 caracteres.", "error")
+        return redirect(url_for("auth.profile"))
+
+    # Actualizar
+    current_user.set_password(new_password)
+    db.session.commit()
+
+    flash("Contraseña actualizada correctamente.", "success")
+    return redirect(url_for("auth.profile"))

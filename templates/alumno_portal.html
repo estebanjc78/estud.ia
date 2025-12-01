@@ -1,37 +1,89 @@
 {% extends "base.html" %}
 
-{% block title %}Alumno - Resumen de actividades{% endblock %}
+{% block title %}Portal del Alumno{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Espacio del estudiante</div>
+    <h1 style="margin:0;">Hola {{ alumno or "alumno/a" }}, ¡sigue avanzando!</h1>
+    <p class="muted" style="margin:0;">
+        Revisa tus tareas, las ayudas disponibles y cuánto puntaje puedes conservar si las completas sin asistencia.
+    </p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;">
+        <a class="btn btn-primary" href="{{ url_for('tareas') }}">Ver todas las tareas</a>
+        <a class="btn btn-secondary" href="#">Mis evidencias</a>
+    </div>
+</div>
+{% endblock %}
 
 {% block content %}
-<div class="card">
-    <h2>Resumen para {{ alumno }}</h2>
-    <p class="muted">
-        Estas son las actividades disponibles. Puedes entrar a cada una,
-        responder las consignas y pedir ayudas según lo necesites.
-    </p>
+<div class="grid two">
+    <div class="card">
+        <h2 style="margin:0;">Puntos y progreso</h2>
+        <p class="muted" style="margin-top:4px;">Cada ayuda resta puntos; planifica cuándo usarlas.</p>
+        <table style="margin-top:10px;">
+            <thead>
+            <tr>
+                <th>Tarea</th>
+                <th>Entrega</th>
+                <th>Puntos máx.</th>
+                <th>Estado</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for task in tasks or [] %}
+                <tr>
+                    <td>{{ task.title or task.tema }}</td>
+                    <td class="muted">{{ task.due_date or "—" }}</td>
+                    <td>{{ task.max_points or 100 }}</td>
+                    <td>
+                        {% if task.completed %}
+                            <span class="pill" style="background:rgba(34,197,94,0.15); color:#15803d;">Entregado</span>
+                        {% else %}
+                            <span class="pill">Pendiente</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr><td colspan="4" class="muted">No encontramos tareas asignadas todavía.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2>Estrategias de ayuda</h2>
+        <p class="muted">Elige pistas cuando lo necesites, pero recuerda que restan puntos.</p>
+        <ul style="padding-left:18px; margin:0;">
+            <li>Ayuda baja → -5 pts</li>
+            <li>Ayuda media → -10 pts</li>
+            <li>Ayuda alta → -15 pts</li>
+        </ul>
+    </div>
 </div>
 
 <div class="card">
+    <h2 style="margin-top:0;">Actividades disponibles</h2>
     {% if activities %}
         <table>
             <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Tema</th>
-                    <th>Consigna</th>
-                    <th></th>
-                </tr>
+            <tr>
+                <th>ID</th>
+                <th>Tema</th>
+                <th>Consigna</th>
+                <th></th>
+            </tr>
             </thead>
             <tbody>
             {% for act in activities %}
                 <tr>
                     <td>#{{ act.id }}</td>
                     <td>{{ act.tema }}</td>
-                    <td class="muted">{{ act.consigna[:80] }}{% if act.consigna|length > 80 %}...{% endif %}</td>
+                    {% set texto = (act.consigna if act.consigna is defined else act.description) or '' %}
+                    <td class="muted">{{ texto[:80] }}{% if texto|length > 80 %}...{% endif %}</td>
                     <td>
-                        <a href="{{ url_for('alumno', activity_id=act.id, alumno=alumno) }}"
-                           class="btn btn-primary">
-                            Abrir actividad
+                        <a href="{{ url_for('alumno_resolver', task_id=act.id) }}" class="btn btn-primary">
+                            Resolver
                         </a>
                     </td>
                 </tr>
@@ -39,9 +91,67 @@
             </tbody>
         </table>
     {% else %}
-        <p class="muted">
-            Todavía no hay actividades creadas por el profesor.
-        </p>
+        <p class="muted">Todavía no hay actividades creadas por el profesor.</p>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Enviar evidencia</h2>
+    <form method="post" action="{{ url_for('alumno_entregar') }}" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+        <div style="grid-column:1 / -1;">
+            <label>Tarea</label>
+            <select name="task_id" required>
+                <option value="">Selecciona</option>
+                {% for task in tasks %}
+                    <option value="{{ task.id }}">{{ task.title }} (vence {{ task.due_date or "sin fecha" }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Comentario</label>
+            <textarea name="comment" placeholder="Notas sobre la entrega"></textarea>
+        </div>
+        <div>
+            <label>Tipo de evidencia</label>
+            <select name="evidence_type">
+                <option value="">Sin adjunto</option>
+                <option value="VISUAL">Visual</option>
+                <option value="ANALITICA">Analítica</option>
+                <option value="AUDIO">Audio</option>
+            </select>
+        </div>
+        <div>
+            <label>Archivo</label>
+            <input type="file" name="evidence_file">
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">Enviar entrega</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Bitácora personal</h2>
+    {% if bitacora_entries %}
+        <ul style="padding-left:18px; margin:0;">
+            {% for entry in bitacora_entries %}
+                <li style="margin-bottom:8px;">
+                    <strong>{{ entry.categoria }}</strong>
+                    <span class="muted">· {{ entry.created_at.strftime("%d/%m %H:%M") if entry.created_at }}</span>
+                    <div>{{ entry.nota }}</div>
+                    {% if entry.attachments %}
+                        <div class="muted">
+                            Adjuntos:
+                            {% for att in entry.attachments %}
+                                <a href="{{ att.storage_path }}" target="_blank">{{ att.filename }}</a>{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p class="muted">No hay registros todavía.</p>
     {% endif %}
 </div>
 {% endblock %}

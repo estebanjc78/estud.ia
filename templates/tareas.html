@@ -1,38 +1,98 @@
 {% extends "base.html" %}
 
-{% block title %}Tareas - estud.ia{% endblock %}
+{% block title %}Gestión de tareas{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:8px;">
+    <div class="pill">Gestión de tareas</div>
+    <h1 style="margin:0;">Organiza actividades, adjuntos y evidencias</h1>
+    <p class="muted" style="margin:0;">
+        Este módulo listará todas las tareas creadas para cada clase, mostrando entrega, adjuntos y puntaje máximo.
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn btn-primary" href="#taskForm">Nueva tarea</a>
+        <a class="btn btn-secondary" href="{{ url_for('profe') }}">Volver al panel</a>
+    </div>
+</div>
+{% endblock %}
 
 {% block content %}
 <div class="card">
-    <h2>Tareas (en construcción)</h2>
-    <p class="muted">
-        Aquí vamos a organizar las tareas por fecha, estado y tipo de actividad.
-        Por ahora verás la misma lista de actividades como referencia.
-    </p>
-</div>
-
-<div class="card">
-    {% if activities %}
+    <h2 style="margin-top:0;">Próximas tareas</h2>
+    {% if tasks %}
         <table>
             <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Tema</th>
-                    <th>Consigna</th>
-                </tr>
+            <tr>
+                <th>Clase</th>
+                <th>Título</th>
+                <th>Entrega</th>
+                <th>Puntos</th>
+                <th>Adjuntos</th>
+            </tr>
             </thead>
             <tbody>
-            {% for act in activities %}
+            {% for task in tasks %}
                 <tr>
-                    <td>#{{ act.id }}</td>
-                    <td>{{ act.tema }}</td>
-                    <td class="muted">{{ act.consigna[:100] }}{% if act.consigna|length > 100 %}...{% endif %}</td>
+                    <td>{{ task.lesson.title if task.lesson else "Clase" }}</td>
+                    <td>{{ task.title }}</td>
+                    <td>{{ task.due_date or "Sin fecha" }}</td>
+                    <td>{{ task.max_points or 100 }}</td>
+                    <td>
+                        {% if task.attachments %}
+                            {% for att in task.attachments %}
+                                <a href="{{ att.storage_path }}" target="_blank">{{ att.filename }}</a>{% if not loop.last %}, {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            0
+                        {% endif %}
+                    </td>
                 </tr>
             {% endfor %}
             </tbody>
         </table>
     {% else %}
-        <p class="muted">No hay actividades por ahora.</p>
+        <p class="muted">Aún no cargaste tareas. Crea la primera para comenzar a recibir evidencias.</p>
     {% endif %}
 </div>
+
+{% if can_create_tasks %}
+<div class="card">
+    <h2 style="margin-top:0;">Crear nueva tarea</h2>
+    <form id="taskForm" method="post" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px;">
+        <div style="grid-column:1 / -1;">
+            <label>Clase</label>
+            <select name="lesson_id" required>
+                <option value="">Selecciona</option>
+                {% for lesson in lessons %}
+                    <option value="{{ lesson.id }}">{{ lesson.title }} ({{ lesson.class_date }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Título</label>
+            <input type="text" name="title" required>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Descripción</label>
+            <textarea name="description"></textarea>
+        </div>
+        <div>
+            <label>Fecha de entrega</label>
+            <input type="date" name="due_date">
+        </div>
+        <div>
+            <label>Puntos máximos</label>
+            <input type="number" name="max_points" min="0" value="100">
+        </div>
+        <div>
+            <label>Archivo guía</label>
+            <input type="file" name="task_attachment">
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">Guardar tarea</button>
+        </div>
+    </form>
+    </form>
+</div>
+{% endif %}
 {% endblock %}

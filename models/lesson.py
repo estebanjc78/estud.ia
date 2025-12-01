@@ -1,4 +1,7 @@
 from datetime import datetime, time
+
+from sqlalchemy.orm import foreign
+
 from extensions import db
 
 
@@ -36,3 +39,9 @@ class Lesson(db.Model):
     section = db.relationship("Section", backref="lessons")
     teacher_profile = db.relationship("Profile", backref="lessons")
     objective = db.relationship("Objective", backref="lessons")
+    attachments = db.relationship(
+        "Attachment",
+        primaryjoin="and_(foreign(Attachment.context_id) == Lesson.id, Attachment.context_type == 'lesson')",
+        viewonly=True,
+        lazy="selectin",
+    )
