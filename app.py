@@ -1,6 +1,7 @@
 # app.py
 import os
 from datetime import date, datetime
+from pathlib import Path
 
 from flask import (
     Flask,
@@ -13,14 +14,21 @@ from flask import (
     current_app,
     Response,
     jsonify,
+    send_from_directory,
 )
 from flask_migrate import Migrate
 from flask_login import current_user, login_required
-from werkzeug.utils import secure_filename
 
 from config import Config
 from extensions import db, login_manager
-from services import ViewDataService, InsightsService, AIInsightsService, HelpUsageService
+from services import (
+    ViewDataService,
+    InsightsService,
+    AIInsightsService,
+    HelpUsageService,
+    CurriculumService,
+    save_logo,
+)
 from sqlalchemy.exc import OperationalError
 
 
@@ -111,6 +119,10 @@ def home():
             return redirect(url_for("alumno_portal"))
         if profile.role == RoleEnum.PSICOPEDAGOGIA:
             return redirect(url_for("psico_panel"))
+        if profile.role == RoleEnum.ADMIN_COLEGIO:
+            return redirect(url_for("admin.admin_structure"))
+        if getattr(RoleEnum, "ADMIN", None) and profile.role == RoleEnum.ADMIN:
+            return redirect(url_for("owner_institutions"))
 
     # Otros roles o sin perfil: por ahora van al dashboard de profesor
     return redirect(url_for("profe"))
@@ -131,7 +143,6 @@ def profe():
     allowed_roles = (
         RoleEnum.PROFESOR,
         getattr(RoleEnum, "ADMIN_COLEGIO", None),
-        getattr(RoleEnum, "ADMIN", None),
         getattr(RoleEnum, "RECTOR", None),
         getattr(RoleEnum, "PSICOPEDAGOGIA", None),
     )
@@ -142,7 +153,6 @@ def profe():
     can_edit = profile.role in (
         RoleEnum.PROFESOR,
         getattr(RoleEnum, "ADMIN_COLEGIO", RoleEnum.PROFESOR),
-        getattr(RoleEnum, "ADMIN", RoleEnum.PROFESOR),
         getattr(RoleEnum, "RECTOR", RoleEnum.PROFESOR),
     )
 
@@ -376,7 +386,6 @@ def mensajes():
     allowed_roles = (
         RoleEnum.PROFESOR,
         getattr(RoleEnum, "ADMIN_COLEGIO", None),
-        getattr(RoleEnum, "ADMIN", None),
         getattr(RoleEnum, "PSICOPEDAGOGIA", None),
         getattr(RoleEnum, "RECTOR", None),
     )
@@ -465,18 +474,22 @@ def insights():
         .all()
     )
 
-    reports = []
+    reports_own: list[InsightReport] = []
+    reports_shared: list[InsightReport] = []
     try:
-        reports_query = InsightReport.query.filter_by(institution_id=profile.institution_id)
+        base_query = InsightReport.query.filter_by(institution_id=profile.institution_id)
+        own_query = base_query.filter(InsightReport.author_profile_id == profile.id)
+        reports_own = own_query.order_by(InsightReport.updated_at.desc()).limit(5).all()
+
+        shared_query = base_query.filter(InsightReport.author_profile_id != profile.id)
         if not _has_admin_role(profile):
-            reports_query = reports_query.filter(
-                (InsightReport.author_profile_id == profile.id)
-            )
-        reports = reports_query.order_by(InsightReport.created_at.desc()).limit(5).all()
+            shared_query = shared_query.filter(InsightReport.status == "ready")
+        reports_shared = shared_query.order_by(InsightReport.updated_at.desc()).limit(10).all()
     except OperationalError as exc:
         current_app.logger.warning("Tabla insight_report no disponible: %s", exc)
         flash("Aún no habilitaste los reportes IA en la base de datos. Corré las migraciones para ver el historial.", "info")
-        reports = []
+        reports_own = []
+        reports_shared = []
 
     return render_template(
         "insights.html",
@@ -484,10 +497,12 @@ def insights():
         ai_brief=ai_brief,
         lessons=lessons,
         students=students,
-        reports=reports,
+        reports_own=reports_own,
+        reports_shared=reports_shared,
         report_flavors=AIInsightsService.available_flavors(),
         recipient_groups=_build_recipient_groups(profile),
         is_admin=_has_admin_role(profile),
+        current_profile_id=profile.id,
     )
 
 
@@ -549,6 +564,8 @@ def save_insight_report(report_id: int):
     from models import InsightReport
 
     report = InsightReport.query.get_or_404(report_id)
+    if report.institution_id != profile.institution_id:
+        abort(403)
     if report.author_profile_id != profile.id and not _has_admin_role(profile):
         abort(403)
 
@@ -574,7 +591,7 @@ def download_insight_report(report_id: int):
     from flask import Response
 
     report = InsightReport.query.get_or_404(report_id)
-    if report.author_profile_id != profile.id and not _has_admin_role(profile):
+    if report.institution_id != profile.institution_id:
         abort(403)
 
     filename = f"reporte_{report.scope.value}_{report.id}.txt"
@@ -597,7 +614,7 @@ def send_insight_report(report_id: int):
     from api.services.messages_service import MessageService
 
     report = InsightReport.query.get_or_404(report_id)
-    if report.author_profile_id != profile.id and not _has_admin_role(profile):
+    if report.institution_id != profile.institution_id:
         abort(403)
 
     recipient_ids = request.form.getlist("recipient_profile_ids")
@@ -624,6 +641,231 @@ def send_insight_report(report_id: int):
 
     flash("Reporte enviado por Mensajes.", "success")
     return redirect(url_for("insights", report_id=report.id))
+
+
+@app.post("/insights/report/<int:report_id>/clone")
+@login_required
+def clone_insight_report(report_id: int):
+    profile = _get_current_profile()
+    if not profile:
+        abort(403)
+
+    from models import InsightReport
+
+    report = InsightReport.query.get_or_404(report_id)
+    if report.institution_id != profile.institution_id:
+        abort(403)
+
+    duplicate = InsightReport(
+        institution_id=report.institution_id,
+        author_profile_id=profile.id,
+        scope=report.scope,
+        target_id=report.target_id,
+        target_label=report.target_label,
+        ai_model=report.ai_model,
+        prompt_snapshot=report.prompt_snapshot,
+        context_snapshot=report.context_snapshot,
+        ai_draft=report.final_text or report.ai_draft,
+        final_text=report.final_text or report.ai_draft,
+        status="draft",
+    )
+
+    db.session.add(duplicate)
+    db.session.commit()
+
+    flash("Duplicamos el reporte para que lo edites.", "success")
+    return redirect(url_for("insights", report_id=duplicate.id))
+
+
+@app.route("/owner/institutions", methods=["GET", "POST"])
+@login_required
+def owner_institutions():
+    profile = _get_current_profile()
+    if not profile:
+        abort(403)
+
+    from models import Institution, Profile as ProfileModel, RoleEnum, User, PlatformTheme
+    from api.institution import _normalize_hex_color
+
+    owner_role = getattr(RoleEnum, "ADMIN", None)
+    if not owner_role or profile.role != owner_role:
+        abort(403)
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "create_institution":
+            name = (request.form.get("name") or "").strip()
+            short_code = (request.form.get("short_code") or "").strip() or None
+            primary_color = request.form.get("primary_color")
+            secondary_color = request.form.get("secondary_color")
+            logo_file = request.files.get("logo_file")
+
+            if not name:
+                flash("El nombre del colegio es obligatorio.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            if short_code and Institution.query.filter_by(short_code=short_code).first():
+                flash("Ya existe una institución con ese código.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            try:
+                normalized_primary = _normalize_hex_color(primary_color) or "#1F4B99"
+                normalized_secondary = _normalize_hex_color(secondary_color) or "#9AB3FF"
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("owner_institutions"))
+
+            institution = Institution(
+                name=name,
+                short_code=short_code,
+                primary_color=normalized_primary,
+                secondary_color=normalized_secondary,
+                logo_url=save_logo(logo_file),
+            )
+            db.session.add(institution)
+            db.session.commit()
+            flash("Institución creada correctamente.", "success")
+            return redirect(url_for("owner_institutions"))
+
+        if action == "update_institution":
+            inst_id = request.form.get("institution_id")
+            institution = Institution.query.get(inst_id)
+            if not institution:
+                flash("Institución no encontrada.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            name = (request.form.get("name") or institution.name).strip()
+            short_code = (request.form.get("short_code") or "").strip() or None
+            primary_color = request.form.get("primary_color")
+            secondary_color = request.form.get("secondary_color")
+            logo_file = request.files.get("logo_file")
+
+            if not name:
+                flash("El nombre del colegio es obligatorio.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            if short_code and short_code != institution.short_code:
+                if Institution.query.filter_by(short_code=short_code).first():
+                    flash("Ya existe una institución con ese código.", "error")
+                    return redirect(url_for("owner_institutions"))
+
+            try:
+                normalized_primary = _normalize_hex_color(primary_color) or institution.primary_color
+                normalized_secondary = _normalize_hex_color(secondary_color) or institution.secondary_color
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("owner_institutions"))
+
+            institution.name = name
+            institution.short_code = short_code
+            saved_logo = save_logo(logo_file)
+            institution.logo_url = saved_logo or institution.logo_url
+            institution.primary_color = normalized_primary
+            institution.secondary_color = normalized_secondary
+            db.session.commit()
+            flash("Institución actualizada.", "success")
+            return redirect(url_for("owner_institutions"))
+
+        if action == "delete_institution":
+            inst_id = request.form.get("institution_id")
+            institution = Institution.query.get(inst_id)
+            if not institution:
+                flash("Institución no encontrada.", "error")
+                return redirect(url_for("owner_institutions"))
+            db.session.delete(institution)
+            db.session.commit()
+            flash("Institución eliminada.", "success")
+            return redirect(url_for("owner_institutions"))
+
+        if action == "update_platform_theme":
+            theme = PlatformTheme.current()
+            theme.name = (request.form.get("platform_name") or theme.name or "estud.ia").strip()
+            theme.subtitle = (request.form.get("platform_subtitle") or theme.subtitle)
+            theme.logo_url = (request.form.get("platform_logo") or theme.logo_url)
+            theme.primary_color = (_normalize_hex_color(request.form.get("platform_primary")) or theme.primary_color)
+            theme.secondary_color = (_normalize_hex_color(request.form.get("platform_secondary")) or theme.secondary_color)
+            theme.sidebar_color = (_normalize_hex_color(request.form.get("platform_sidebar")) or theme.sidebar_color)
+            theme.sidebar_text_color = (_normalize_hex_color(request.form.get("platform_sidebar_text")) or theme.sidebar_text_color)
+            theme.background_color = (_normalize_hex_color(request.form.get("platform_background")) or theme.background_color)
+            theme.login_background = (_normalize_hex_color(request.form.get("platform_login_background")) or theme.login_background)
+            db.session.commit()
+            flash("Tema global actualizado.", "success")
+            return redirect(url_for("owner_institutions"))
+
+        if action == "assign_admin":
+            inst_id = request.form.get("institution_id")
+            email = (request.form.get("admin_email") or "").strip().lower()
+            password = (request.form.get("admin_password") or "").strip()
+            full_name = (request.form.get("admin_name") or "").strip()
+
+            institution = Institution.query.get(inst_id)
+            if not institution:
+                flash("Institución no encontrada.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            if not email or not password or not full_name:
+                flash("Completa nombre, email y contraseña.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            if User.query.filter_by(email=email).first():
+                flash("Ya existe un usuario con ese email.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            user = User(email=email)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.flush()
+
+            admin_role = getattr(RoleEnum, "ADMIN_COLEGIO", None)
+            if not admin_role:
+                flash("Rol ADMIN_COLEGIO no disponible.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            profile_admin = ProfileModel(
+                user_id=user.id,
+                institution_id=institution.id,
+                role=admin_role,
+                full_name=full_name,
+            )
+            db.session.add(profile_admin)
+            db.session.commit()
+            flash("Administrador del colegio creado.", "success")
+            return redirect(url_for("owner_institutions"))
+
+        flash("Acción inválida.", "error")
+        return redirect(url_for("owner_institutions"))
+
+    institutions = Institution.query.order_by(Institution.name.asc()).all()
+    admins_by_institution: dict[int, list] = {}
+    inst_ids = [inst.id for inst in institutions]
+    if inst_ids:
+        admin_role = getattr(RoleEnum, "ADMIN_COLEGIO", None)
+        admin_profiles = (
+            ProfileModel.query.filter(
+                ProfileModel.institution_id.in_(inst_ids),
+                ProfileModel.role == admin_role,
+            )
+            .order_by(ProfileModel.full_name.asc())
+            .all()
+        )
+        for admin in admin_profiles:
+            admins_by_institution.setdefault(admin.institution_id, []).append(admin)
+
+    return render_template(
+        "owner_institutions.html",
+        institutions=institutions,
+        admins_by_institution=admins_by_institution,
+        platform_theme=PlatformTheme.current(),
+        is_admin=True,
+    )
+
+
+@app.get("/uploads/logos/<path:filename>")
+def serve_logo(filename: str):
+    directory = Path(current_app.instance_path) / "uploads" / "logos"
+    return send_from_directory(directory, filename)
+
+
 @app.route("/plan", methods=["GET", "POST"])
 @login_required
 def plan_view():
@@ -631,12 +873,19 @@ def plan_view():
     if not profile:
         abort(403)
 
-    from models import StudyPlan, Objective, Lesson, Grade, Section, RoleEnum
+    from models import (
+        StudyPlan,
+        Objective,
+        Lesson,
+        Grade,
+        Section,
+        RoleEnum,
+        CurriculumDocument,
+    )
 
     editable_roles = (
         RoleEnum.PROFESOR,
         getattr(RoleEnum, "ADMIN_COLEGIO", RoleEnum.PROFESOR),
-        getattr(RoleEnum, "ADMIN", RoleEnum.PROFESOR),
         getattr(RoleEnum, "RECTOR", RoleEnum.PROFESOR),
     )
     can_edit = profile.role in editable_roles
@@ -653,13 +902,77 @@ def plan_view():
         .all()
     )
 
+    curriculum_documents = (
+        CurriculumService.documents_for_institution(profile.institution_id)
+        if can_edit
+        else []
+    )
+
     if request.method == "POST" and can_edit:
         action = request.form.get("action")
+        if action == "upload_curriculum":
+            file = request.files.get("curriculum_file")
+            title = (request.form.get("curriculum_title") or (file.filename if file else "")).strip()
+            jurisdiction = (request.form.get("curriculum_jurisdiction") or "").strip()
+            year_raw = request.form.get("curriculum_year")
+            grade_min = CurriculumService.normalize_grade_label(request.form.get("curriculum_grade_min"))
+            grade_max = CurriculumService.normalize_grade_label(request.form.get("curriculum_grade_max"))
+            if not file or not file.filename:
+                flash("Selecciona un archivo PDF o TXT.", "error")
+                return redirect(url_for("plan_view"))
+            try:
+                year_val = int(year_raw) if year_raw else None
+            except ValueError:
+                year_val = None
+            try:
+                CurriculumService.ingest_from_file(
+                    profile=profile,
+                    file_storage=file,
+                    title=title or "Currículum",
+                    jurisdiction=jurisdiction,
+                    year=year_val,
+                    grade_min=grade_min,
+                    grade_max=grade_max,
+                )
+                flash("Currículum cargado. Estamos procesando el archivo.", "success")
+            except Exception as exc:
+                flash(f"No pudimos cargar el archivo: {exc}", "error")
+            return redirect(url_for("plan_view"))
+
+        if action == "paste_curriculum":
+            raw_text = (request.form.get("curriculum_text") or "").strip()
+            title = (request.form.get("curriculum_title") or "Currículum pegado").strip()
+            jurisdiction = (request.form.get("curriculum_jurisdiction") or "").strip()
+            year_raw = request.form.get("curriculum_year")
+            grade_min = CurriculumService.normalize_grade_label(request.form.get("curriculum_grade_min"))
+            grade_max = CurriculumService.normalize_grade_label(request.form.get("curriculum_grade_max"))
+            if not raw_text:
+                flash("Pegá al menos un capítulo del plan oficial.", "error")
+                return redirect(url_for("plan_view"))
+            try:
+                year_val = int(year_raw) if year_raw else None
+            except ValueError:
+                year_val = None
+            CurriculumService.ingest_from_text(
+                profile=profile,
+                title=title,
+                raw_text=raw_text,
+                jurisdiction=jurisdiction,
+                year=year_val,
+                grade_min=grade_min,
+                grade_max=grade_max,
+            )
+            flash("Texto curricular guardado y procesado.", "success")
+            return redirect(url_for("plan_view"))
+
         if action == "create_plan":
             grade_id = request.form.get("grade_id")
             name = (request.form.get("plan_name") or "").strip()
             description = (request.form.get("plan_description") or "").strip()
             year_raw = request.form.get("plan_year")
+            curriculum_doc_id = request.form.get("curriculum_document_id")
+            use_curriculum_ai = request.form.get("curriculum_use_ai") == "on"
+            auto_objectives = request.form.get("curriculum_create_objectives") == "on"
 
             try:
                 grade_id_int = int(grade_id)
@@ -689,6 +1002,40 @@ def plan_view():
                 is_active=True,
             )
             db.session.add(plan)
+            db.session.flush()
+
+            if curriculum_doc_id and (use_curriculum_ai or auto_objectives):
+                document = CurriculumDocument.query.get(curriculum_doc_id)
+                if document and (
+                    document.institution_id is None or document.institution_id == profile.institution_id
+                ):
+                    grade_label = CurriculumService.normalize_grade_label(grade.name)
+                    segments = CurriculumService.segments_for_grade(
+                        documents=[document],
+                        grade_label=grade_label,
+                        limit_per_doc=6,
+                    ) if grade_label else []
+                    if segments:
+                        enrichment = CurriculumService.build_plan_enrichment(
+                            plan=plan,
+                            grade=grade,
+                            segments=segments,
+                            include_objectives=auto_objectives,
+                        )
+                        if use_curriculum_ai and enrichment.get("description"):
+                            if plan.description:
+                                plan.description = f"{plan.description}\n\n{enrichment['description']}"
+                            else:
+                                plan.description = enrichment["description"]
+                        if auto_objectives and enrichment.get("objectives"):
+                            for obj_data in enrichment["objectives"]:
+                                obj = Objective(
+                                    study_plan_id=plan.id,
+                                    title=obj_data.get("title")[:255],
+                                    description=obj_data.get("description"),
+                                )
+                                db.session.add(obj)
+
             db.session.commit()
             flash("Plan creado correctamente.", "success")
             return redirect(url_for("plan_view"))
@@ -816,6 +1163,7 @@ def plan_view():
         sections=sections,
         can_edit=can_edit,
         is_admin=_has_admin_role(profile),
+        curriculum_documents=curriculum_documents,
     )
 
 
@@ -890,7 +1238,6 @@ def psico_panel():
     if profile.role not in (
         RoleEnum.PSICOPEDAGOGIA,
         getattr(RoleEnum, "ADMIN_COLEGIO", None),
-        getattr(RoleEnum, "ADMIN", None),
     ):
         abort(403)
 
@@ -991,7 +1338,6 @@ def crear_bitacora_psico():
     if profile.role not in (
         getattr(RoleEnum, "PSICOPEDAGOGIA", None),
         getattr(RoleEnum, "ADMIN_COLEGIO", None),
-        getattr(RoleEnum, "ADMIN", None),
     ):
         abort(403)
 
@@ -1241,7 +1587,6 @@ def _has_admin_role(profile) -> bool:
         and profile.role
         and profile.role
         in (
-            getattr(RoleEnum, "ADMIN", None),
             getattr(RoleEnum, "ADMIN_COLEGIO", None),
             getattr(RoleEnum, "RECTOR", None),
         )
@@ -1252,6 +1597,8 @@ def _filter_recipient_ids(author_profile, raw_ids):
     from models import Profile, RoleEnum
 
     if not raw_ids:
+        return []
+    if not getattr(author_profile, "institution_id", None):
         return []
 
     explicit_ids: list[int] = []
@@ -1308,6 +1655,9 @@ def _filter_recipient_ids(author_profile, raw_ids):
 
 def _build_recipient_groups(profile):
     from models import Profile as ProfileModel, RoleEnum
+
+    if not getattr(profile, "institution_id", None):
+        return []
 
     base_query = ProfileModel.query.filter_by(
         institution_id=profile.institution_id

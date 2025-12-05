@@ -5,7 +5,7 @@
 {% block content_header %}
 <div class="card" style="display:flex; flex-direction:column; gap:8px;">
     <div class="pill">Panel profesor</div>
-    <h1 style="margin:0;">Hola {{ current_user.email.split('@')[0] }}, esto es lo que pasa hoy</h1>
+    <h1 style="margin:0;">Hola {{ current_profile.full_name if current_profile and current_profile.full_name else current_display_name }}, esto es lo que pasa hoy</h1>
     <p class="muted" style="margin:0;">
         El tablero reúne actividad de clases, uso de ayudas y mensajes clave para que puedas tomar decisiones rápidas.
     </p>

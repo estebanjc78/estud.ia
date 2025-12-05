@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Instituciones{% endblock %}
+
+{% block extra_head %}
+<style>
+    .owner-admin-form > div {
+        display: flex;
+        flex-direction: column;
+    }
+    .owner-admin-form input,
+    .owner-admin-form select {
+        width: 100%;
+    }
+</style>
+{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:6px;">
+    <div class="pill">Plataforma</div>
+    <h1 style="margin:0;">Gestión de instituciones</h1>
+    <p class="muted" style="margin:0;">
+        Creá colegios, actualizá la identidad visual y asigná administradores locales. Solo vos ves este panel.
+    </p>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="grid two">
+    <div class="card">
+        <h3 style="margin-top:0;">Crear institución</h3>
+        <form method="post" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+            <input type="hidden" name="action" value="create_institution">
+            <div style="grid-column:1 / -1;">
+                <label>Nombre</label>
+                <input type="text" name="name" placeholder="Colegio Nuevo Horizonte" required>
+            </div>
+            <div>
+                <label>Código corto</label>
+                <input type="text" name="short_code" placeholder="NH2025">
+            </div>
+            <div>
+                <label>Logo (archivo)</label>
+                <input type="file" name="logo_file" accept="image/*">
+            </div>
+            <div>
+                <label>Color primario (#HEX)</label>
+                <input type="text" name="primary_color" placeholder="#2155CD">
+            </div>
+            <div>
+                <label>Color secundario (#HEX)</label>
+                <input type="text" name="secondary_color" placeholder="#A0B3FF">
+            </div>
+            <div style="grid-column:1 / -1; margin-top:4px;">
+                <button class="btn btn-primary" type="submit">Crear colegio</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3 style="margin-top:0;">Asignar admin del colegio</h3>
+        <form method="post" class="owner-admin-form" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px;">
+            <input type="hidden" name="action" value="assign_admin">
+            <div>
+                <label>Institución</label>
+                <select name="institution_id" required style="width:100%;">
+                    <option value="">Selecciona</option>
+                    {% for inst in institutions %}
+                        <option value="{{ inst.id }}">{{ inst.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Nombre completo</label>
+                <input type="text" name="admin_name" required style="width:100%;">
+            </div>
+            <div>
+                <label>Email</label>
+                <input type="email" name="admin_email" required style="width:100%;">
+            </div>
+            <div>
+                <label>Contraseña temporal</label>
+                <input type="text" name="admin_password" required style="width:100%;">
+            </div>
+            <div style="grid-column:1 / -1;">
+                <button class="btn btn-secondary" type="submit">Crear administrador</button>
+            </div>
+        </form>
+        <small class="muted">El administrador creado podrá gestionar usuarios, clases y plan de estudio de su colegio.</small>
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+    <h3 style="margin-top:0;">Identidad global de la plataforma</h3>
+    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <input type="hidden" name="action" value="update_platform_theme">
+        <div>
+            <label>Nombre</label>
+            <input type="text" name="platform_name" value="{{ platform_theme.name or '' }}">
+        </div>
+        <div>
+            <label>Subtítulo</label>
+            <input type="text" name="platform_subtitle" value="{{ platform_theme.subtitle or '' }}">
+        </div>
+        <div>
+            <label>Logo (URL)</label>
+            <input type="text" name="platform_logo" value="{{ platform_theme.logo_url or '' }}">
+        </div>
+        <div>
+            <label>Color primario</label>
+            <input type="text" name="platform_primary" value="{{ platform_theme.primary_color or '' }}">
+        </div>
+        <div>
+            <label>Color secundario</label>
+            <input type="text" name="platform_secondary" value="{{ platform_theme.secondary_color or '' }}">
+        </div>
+        <div>
+            <label>Sidebar</label>
+            <input type="text" name="platform_sidebar" value="{{ platform_theme.sidebar_color or '' }}">
+        </div>
+        <div>
+            <label>Texto sidebar</label>
+            <input type="text" name="platform_sidebar_text" value="{{ platform_theme.sidebar_text_color or '' }}">
+        </div>
+        <div>
+            <label>Fondo UI</label>
+            <input type="text" name="platform_background" value="{{ platform_theme.background_color or '' }}">
+        </div>
+        <div>
+            <label>Fondo login</label>
+            <input type="text" name="platform_login_background" value="{{ platform_theme.login_background or '' }}">
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">Guardar tema</button>
+        </div>
+    </form>
+    <small class="muted">Este tema se aplica solo al panel del dueño y a pantallas globales.</small>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Instituciones registradas</h3>
+    {% if institutions %}
+        <div style="display:flex; flex-direction:column; gap:14px;">
+            {% for inst in institutions %}
+                <div style="border:1px solid var(--brand-border); border-radius:16px; padding:14px;">
+                    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <strong>{{ inst.name }}</strong>
+                            {% if inst.short_code %}
+                                <span class="pill">{{ inst.short_code }}</span>
+                            {% endif %}
+                            <div class="muted" style="margin-top:4px;">
+                                Primario: {{ inst.primary_color or "—" }} · Secundario: {{ inst.secondary_color or "—" }}
+                            </div>
+                        </div>
+                        <form method="post" onsubmit="return confirm('¿Eliminar {{ inst.name }}? Esta acción no se puede deshacer.');">
+                            <input type="hidden" name="action" value="delete_institution">
+                            <input type="hidden" name="institution_id" value="{{ inst.id }}">
+                            <button class="btn btn-link" type="submit">Eliminar colegio</button>
+                        </form>
+                    </div>
+                    <details style="margin-top:10px;">
+                        <summary style="cursor:pointer; color:var(--brand-primary);">Editar datos</summary>
+                        <form method="post" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px; margin-top:10px;">
+                            <input type="hidden" name="action" value="update_institution">
+                            <input type="hidden" name="institution_id" value="{{ inst.id }}">
+                            <div style="grid-column:1 / -1;">
+                                <label>Nombre</label>
+                                <input type="text" name="name" value="{{ inst.name }}" required>
+                            </div>
+                            <div>
+                                <label>Código corto</label>
+                                <input type="text" name="short_code" value="{{ inst.short_code or '' }}">
+                            </div>
+                            <div>
+                                <label>Logo (archivo)</label>
+                                <input type="file" name="logo_file" accept="image/*">
+                                {% if inst.logo_url %}
+                                    <small class="muted">Logo actual: {{ inst.logo_url }}</small>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <label>Color primario (#HEX)</label>
+                                <input type="text" name="primary_color" value="{{ inst.primary_color or '' }}">
+                            </div>
+                            <div>
+                                <label>Color secundario (#HEX)</label>
+                                <input type="text" name="secondary_color" value="{{ inst.secondary_color or '' }}">
+                            </div>
+                            <div style="grid-column:1 / -1;">
+                                <button class="btn btn-secondary" type="submit">Guardar cambios</button>
+                            </div>
+                        </form>
+                    </details>
+                    <div style="margin-top:12px;">
+                        <strong>Admins del colegio</strong>
+                        <ul style="margin:6px 0 0 18px;">
+                            {% for admin in admins_by_institution.get(inst.id, []) %}
+                                <li>{{ admin.full_name }} · {{ admin.user.email }}</li>
+                            {% else %}
+                                <li class="muted">Sin administradores asignados.</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="muted">Aún no cargaste colegios en la plataforma.</p>
+    {% endif %}
+</div>
+{% endblock %}

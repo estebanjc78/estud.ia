@@ -61,7 +61,7 @@ def _get_or_create(model, defaults=None, **kwargs):
     return instance, True
 
 
-def _ensure_user(email, full_name, role, institution_id, password=None, **extra_profile_fields):
+def _ensure_user(email, full_name, role, institution_id=None, password=None, **extra_profile_fields):
     user, created = _get_or_create(User, email=email)
     if created or (not user.password_hash and password):
         user.set_password(password or DEMO_PASSWORDS.get(email, "changeme123"))
@@ -140,7 +140,7 @@ def run_basic_seed():
         "admin@demo.com",
         "Admin Demo",
         RoleEnum.ADMIN,
-        inst.id,
+        None,
         password=DEMO_PASSWORDS["admin@demo.com"],
     )
     prof_user, prof_profile = _ensure_user(

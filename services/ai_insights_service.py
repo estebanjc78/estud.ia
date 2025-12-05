@@ -57,7 +57,14 @@ class AIInsightsService:
             flavor=flavor,
             custom_instructions=custom_prompt,
         )
-        client = AIClient()
+        institution = getattr(author, "institution", None)
+        institution_provider = institution.ai_provider if institution else None
+        institution_model = institution.ai_model if institution else None
+
+        client = AIClient(
+            provider_override=institution_provider,
+            model_override=institution_model,
+        )
         ai_result = client.generate(prompt=prompt, context=context)
 
         report = InsightReport(

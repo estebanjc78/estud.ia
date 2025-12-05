@@ -1,5 +1,7 @@
 # api/admin.py
 
+import os
+
 from flask import (
     Blueprint,
     render_template,
@@ -7,13 +9,15 @@ from flask import (
     redirect,
     url_for,
     flash,
+    abort,
 )
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from extensions import db
 from models import User, Profile, Institution, RoleEnum, Grade, Section
 from api.utils.permissions import require_roles, get_current_profile
 from api.institution import _normalize_hex_color, _normalize_rewards
+from services import save_logo
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -32,28 +36,64 @@ def admin_usuarios():
     if not instituciones:
         flash("Crea una institución desde 'Estructura escolar' antes de agregar usuarios.", "info")
 
-    usuarios = User.query.all()
-    perfiles = Profile.query.all()
+    if profile and profile.role and profile.role.name == "ADMIN":
+        return redirect(url_for("owner_institutions"))
+
+    if profile and profile.role and profile.role.name != "ADMIN":
+        usuarios = (
+            User.query.join(User.profiles)
+            .filter(Profile.institution_id == profile.institution_id)
+            .distinct()
+            .order_by(User.email.asc())
+            .all()
+        )
+        perfiles = (
+            Profile.query.filter_by(institution_id=profile.institution_id)
+            .order_by(Profile.full_name.asc())
+            .all()
+        )
+    else:
+        usuarios = User.query.order_by(User.email.asc()).all()
+        perfiles = Profile.query.order_by(Profile.full_name.asc()).all()
     roles = list(RoleEnum)
 
     perfiles_por_user = {}
     for p in perfiles:
         perfiles_por_user.setdefault(p.user_id, []).append(p)
 
+    perfiles_visible: dict[int, list] = {}
+    usuarios_visibles: list[User] = []
+    manageable_users: dict[int, bool] = {}
+    viewer_is_owner = bool(profile and profile.role and profile.role.name == "ADMIN")
+
+    for usuario in usuarios:
+        perfiles_usuario = perfiles_por_user.get(usuario.id, [])
+        if not viewer_is_owner:
+            perfiles_usuario = [
+                p for p in perfiles_usuario if getattr(p.role, "name", None) != "ADMIN"
+            ]
+        if not perfiles_usuario:
+            continue
+        perfiles_visible[usuario.id] = perfiles_usuario
+        usuarios_visibles.append(usuario)
+        manageable_users[usuario.id] = _can_manage_user(profile, usuario)
+
     return render_template(
         "admin_config.html",
-        usuarios=usuarios,
-        perfiles_por_user=perfiles_por_user,
+        usuarios=usuarios_visibles,
+        perfiles_por_user=perfiles_visible,
         instituciones=instituciones,
         has_institutions=bool(instituciones),
         roles=roles,
+        manageable_users=manageable_users,
+        can_manage_all=viewer_is_owner,
         is_admin=True,
     )
 
 
 @admin_bp.post("/usuarios/nuevo")
 @login_required
-@require_roles("ADMIN", "ADMIN_COLEGIO")
+@require_roles("ADMIN_COLEGIO")
 def admin_crear_usuario():
     """
     Crea un usuario + perfil asociado.
@@ -116,7 +156,7 @@ def admin_crear_usuario():
 
 @admin_bp.post("/usuarios/<int:user_id>/reset_password")
 @login_required
-@require_roles("ADMIN", "ADMIN_COLEGIO")
+@require_roles("ADMIN_COLEGIO")
 def admin_reset_password(user_id):
     """
     Resetea la contraseña de un usuario.
@@ -140,9 +180,86 @@ def admin_reset_password(user_id):
     return redirect(url_for("admin.admin_usuarios"))
 
 
-@admin_bp.route("/estructura", methods=["GET", "POST"])
+@admin_bp.post("/perfiles/<int:profile_id>/update")
 @login_required
 @require_roles("ADMIN", "ADMIN_COLEGIO")
+def admin_update_profile(profile_id):
+    current_profile = get_current_profile()
+    if not current_profile:
+        abort(403)
+
+    profile = Profile.query.get_or_404(profile_id)
+    if not _can_manage_profile(current_profile, profile):
+        flash("No tenés permisos para editar este perfil.", "error")
+        return redirect(url_for("admin.admin_usuarios"))
+
+    full_name = (request.form.get("full_name") or "").strip()
+    role_name = (request.form.get("role") or "").strip()
+    institution_raw = request.form.get("institution_id")
+
+    if not full_name or not role_name:
+        flash("Nombre y rol son obligatorios.", "error")
+        return redirect(url_for("admin.admin_usuarios"))
+
+    try:
+        new_role = RoleEnum[role_name]
+    except KeyError:
+        flash("Rol inválido.", "error")
+        return redirect(url_for("admin.admin_usuarios"))
+
+    if current_profile.role.name != "ADMIN" and new_role.name == "ADMIN":
+        flash("Solo un administrador global puede asignar el rol ADMIN.", "error")
+        return redirect(url_for("admin.admin_usuarios"))
+
+    if current_profile.role.name == "ADMIN":
+        try:
+            institution_id = int(institution_raw) if institution_raw else None
+        except (TypeError, ValueError):
+            institution_id = None
+        institution = Institution.query.get(institution_id) if institution_id else None
+        if not institution:
+            flash("Selecciona una institución válida.", "error")
+            return redirect(url_for("admin.admin_usuarios"))
+    else:
+        institution_id = current_profile.institution_id
+
+    profile.full_name = full_name
+    profile.role = new_role
+    profile.institution_id = institution_id
+    db.session.commit()
+
+    flash("Perfil actualizado correctamente.", "success")
+    return redirect(url_for("admin.admin_usuarios"))
+
+
+@admin_bp.post("/usuarios/<int:user_id>/delete")
+@login_required
+@require_roles("ADMIN", "ADMIN_COLEGIO")
+def admin_delete_user(user_id):
+    profile = get_current_profile()
+    if not profile:
+        abort(403)
+
+    user = User.query.get_or_404(user_id)
+
+    if user.id == current_user.id:
+        flash("No podés eliminar tu propia cuenta.", "error")
+        return redirect(url_for("admin.admin_usuarios"))
+
+    if not _can_manage_user(profile, user):
+        flash("No tenés permisos para eliminar este usuario.", "error")
+        return redirect(url_for("admin.admin_usuarios"))
+
+    db.session.delete(user)
+    db.session.commit()
+
+    flash("Usuario eliminado.", "success")
+    return redirect(url_for("admin.admin_usuarios"))
+
+
+@admin_bp.route("/estructura", methods=["GET", "POST"])
+@login_required
+@require_roles("ADMIN_COLEGIO")
 def admin_structure():
     profile = get_current_profile()
     institutions = _institutions_for_profile(profile)
@@ -208,10 +325,6 @@ def admin_structure():
             )
             db.session.add(institution)
             db.session.commit()
-
-            if profile and not profile.institution_id:
-                profile.institution_id = institution.id
-                db.session.commit()
 
             flash("Institución creada correctamente.", "success")
             return redirect(
@@ -318,10 +431,17 @@ def admin_structure():
 
 @admin_bp.route("/cms", methods=["GET", "POST"])
 @login_required
-@require_roles("ADMIN", "ADMIN_COLEGIO")
+@require_roles("ADMIN_COLEGIO")
 def cms():
     profile = get_current_profile()
     institutions = _institutions_for_profile(profile)
+    can_edit_ai = bool(profile and profile.role and profile.role.name == "ADMIN")
+    ai_provider_options = [
+        {"value": "", "label": "Config. global (según entorno)"},
+        {"value": "openai", "label": "OpenAI (usa API global)"},
+        {"value": "heuristic", "label": "Heurístico local"},
+    ]
+    ai_model_default_hint = os.getenv("AI_MODEL") or "gpt-4o-mini"
 
     inst = None
     requested_id = request.args.get("institution_id") or request.form.get("institution_id")
@@ -342,12 +462,13 @@ def cms():
 
     if request.method == "POST":
         name = (request.form.get("name") or inst.name).strip()
-        logo_url = (request.form.get("logo_url") or "").strip() or inst.logo_url
+        logo_file = request.files.get("logo_file")
         primary_color = request.form.get("primary_color")
         secondary_color = request.form.get("secondary_color")
 
         inst.name = name
-        inst.logo_url = logo_url
+        saved_logo = save_logo(logo_file)
+        inst.logo_url = saved_logo or inst.logo_url
 
         try:
             normalized_primary = _normalize_hex_color(primary_color)
@@ -373,6 +494,16 @@ def cms():
             flash(str(exc), "error")
             return redirect(url_for("admin.cms", institution_id=inst.id))
 
+        if can_edit_ai:
+            provider_value = (request.form.get("ai_provider") or "").strip().lower()
+            if provider_value not in ("", "openai", "heuristic"):
+                flash("Proveedor de IA inválido.", "error")
+                return redirect(url_for("admin.cms", institution_id=inst.id))
+            inst.ai_provider = provider_value or None
+
+            model_value = (request.form.get("ai_model") or "").strip()
+            inst.ai_model = model_value or None
+
         db.session.commit()
         flash("Configuración guardada.", "success")
         return redirect(url_for("admin.cms", institution_id=inst.id))
@@ -382,7 +513,35 @@ def cms():
         institution=inst,
         institutions=institutions,
         recompensas=inst.rewards_config or [],
+        ai_provider_options=ai_provider_options,
+        ai_model_default_hint=ai_model_default_hint,
+        can_edit_ai=can_edit_ai,
         is_admin=True,
+    )
+
+
+def _can_manage_profile(manager_profile, target_profile: Profile) -> bool:
+    if not manager_profile or not manager_profile.role:
+        return False
+    if manager_profile.role.name == "ADMIN":
+        return True
+    return (
+        manager_profile.institution_id
+        and target_profile.institution_id == manager_profile.institution_id
+    )
+
+
+def _can_manage_user(manager_profile, user: User) -> bool:
+    if not manager_profile or not manager_profile.role:
+        return False
+    if manager_profile.role.name == "ADMIN":
+        return True
+    managed_institution = manager_profile.institution_id
+    if not managed_institution:
+        return False
+    return all(
+        profile.institution_id == managed_institution
+        for profile in user.profiles
     )
 
 

@@ -28,15 +28,18 @@
 {% endif %}
 
 <div class="card">
-    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+    <form method="post" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
         <input type="hidden" name="institution_id" value="{{ institution.id }}">
         <div style="grid-column:1 / -1;">
             <label>Nombre del colegio</label>
             <input type="text" name="name" value="{{ institution.name }}" required>
         </div>
         <div style="grid-column:1 / -1;">
-            <label>Logo (URL)</label>
-            <input type="text" name="logo_url" value="{{ institution.logo_url or '' }}" placeholder="https://...">
+            <label>Logo del colegio</label>
+            <input type="file" name="logo_file" accept="image/*">
+            {% if institution.logo_url %}
+                <small class="muted">Logo actual: {{ institution.logo_url }}</small>
+            {% endif %}
         </div>
         <div>
             <label>Color primario (#HEX)</label>
@@ -46,6 +49,28 @@
             <label>Color secundario (#HEX)</label>
             <input type="text" name="secondary_color" value="{{ institution.secondary_color or '#9AB3FF' }}">
         </div>
+
+        {% if can_edit_ai %}
+            <div style="grid-column:1 / -1; margin-top:12px;">
+                <h3>Motor de IA por colegio</h3>
+                <p class="muted">Solo los administradores globales pueden ajustar estos valores. Si los dejás vacíos se usará la configuración por defecto del entorno.</p>
+            </div>
+            <div>
+                <label>Proveedor</label>
+                <select name="ai_provider">
+                    {% set current_provider = institution.ai_provider or '' %}
+                    {% for option in ai_provider_options %}
+                        {% set option_value = option.value %}
+                        <option value="{{ option_value }}" {% if option_value == current_provider %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Modelo preferido</label>
+                <input type="text" name="ai_model" value="{{ institution.ai_model or '' }}" placeholder="{{ ai_model_default_hint }}">
+                <small class="muted">Ej: gpt-4o-mini. Deja vacío para usar {{ ai_model_default_hint }} o el valor de entorno.</small>
+            </div>
+        {% endif %}
 
         <div style="grid-column:1 / -1;">
             <h3>Recompensas (hasta 3)</h3>

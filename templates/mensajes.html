@@ -2,6 +2,73 @@
 
 {% block title %}Mensajería{% endblock %}
 
+{% block extra_head %}
+<style>
+    .recipient-selector {
+        border: 1px solid var(--brand-border);
+        border-radius: 16px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+    .recipient-toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+    .recipient-toolbar input[type="search"] {
+        flex: 1;
+        padding: 8px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--brand-border);
+    }
+    .recipient-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        min-height: 32px;
+    }
+    .recipient-summary .chip {
+        background: rgba(33,85,205,0.12);
+        color: #1f2937;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.85rem;
+    }
+    .recipient-groups details {
+        border: 1px solid var(--brand-border);
+        border-radius: 12px;
+        padding: 8px 10px;
+        background: rgba(249,250,252,0.8);
+    }
+    .recipient-groups summary {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+    }
+    .recipient-group-list {
+        margin-top: 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        max-height: 180px;
+        overflow: auto;
+    }
+    .recipient-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 4px;
+        border-radius: 8px;
+    }
+    .recipient-row:hover {
+        background: rgba(33,85,205,0.08);
+    }
+</style>
+{% endblock %}
+
 {% block content_header %}
 <div class="card" style="display:flex; flex-direction:column; gap:6px;">
     <div class="pill">Comunicaciones</div>
@@ -50,9 +117,9 @@
         </div>
     </div>
 
-    <div class="card">
-        <h2 style="margin-top:0;">Nuevo mensaje</h2>
-        <form method="post" action="{{ url_for('enviar_mensaje_manual') }}" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:10px;">
+<div class="card">
+    <h2 style="margin-top:0;">Nuevo mensaje</h2>
+        <form method="post" action="{{ url_for('enviar_mensaje_manual') }}" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:10px;" data-recipient-form="mensajes">
             <label>Clase (opcional)</label>
             <select name="lesson_id">
                 <option value="">Mensaje general</option>
@@ -69,29 +136,63 @@
                 <span class="muted">Selección rápida</span>
                 <div class="chip-row">
                     <label class="chip">
-                        <input type="checkbox" name="recipient_profile_ids" value="group:students">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:students" data-chip-label="Todos los alumnos" onchange="EstudiaRecipients.toggleChip(event, 'mensajes')">
                         Todos los alumnos
                     </label>
                     <label class="chip">
-                        <input type="checkbox" name="recipient_profile_ids" value="group:parents">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:parents" data-chip-label="Familias" onchange="EstudiaRecipients.toggleChip(event, 'mensajes')">
                         Familias
                     </label>
                     <label class="chip">
-                        <input type="checkbox" name="recipient_profile_ids" value="group:staff">
+                        <input type="checkbox" name="recipient_profile_ids" value="group:staff" data-chip-label="Equipo completo" onchange="EstudiaRecipients.toggleChip(event, 'mensajes')">
                         Equipo completo
                     </label>
                 </div>
             </div>
-            <select name="recipient_profile_ids" multiple size="8">
-                {% for group in recipient_groups or [] %}
-                    <optgroup label="{{ group.label }}">
-                        {% for person in group.profiles %}
-                            <option value="{{ person.id }}">{{ person.full_name }}{% if person.role %} · {{ person.role.value | title }}{% endif %}</option>
-                        {% endfor %}
-                    </optgroup>
-                {% endfor %}
-            </select>
-            <small class="muted">Marcá un grupo completo con las chips o elegí personas puntuales en la lista. Dejar todo vacío enviará solo a la clase seleccionada.</small>
+            <div class="recipient-selector" data-recipient-selector="mensajes">
+                <div class="recipient-toolbar">
+                    <input type="search" placeholder="Buscar por nombre o rol" oninput="EstudiaRecipients.filter(event, 'mensajes')">
+                    <button type="button" class="btn btn-link" onclick="EstudiaRecipients.clear('mensajes')">Limpiar selección</button>
+                </div>
+                <div class="recipient-summary" data-recipient-chips="mensajes">
+                    <span class="muted">No seleccionaste destinatarios adicionales.</span>
+                </div>
+                <div class="recipient-groups" data-recipient-list="mensajes">
+                    {% for group in recipient_groups or [] %}
+                        <details open data-recipient-group>
+                            <summary>
+                                <strong>{{ group.label }}</strong>
+                                <span class="muted">{{ group.profiles|length }} personas</span>
+                                <div style="margin-left:auto; display:flex; gap:6px;">
+                                    <button type="button" class="btn btn-link" onclick="EstudiaRecipients.selectGroup(event, 'mensajes', true)">Seleccionar todo</button>
+                                    <button type="button" class="btn btn-link" onclick="EstudiaRecipients.selectGroup(event, 'mensajes', false)">Vaciar</button>
+                                </div>
+                            </summary>
+                            <div class="recipient-group-list">
+                                {% for person in group.profiles %}
+                                    <label class="recipient-row" data-recipient-name="{{ person.full_name | lower }}" data-recipient-role="{{ (person.role.value | lower) if person.role else '' }}">
+                                        <input type="checkbox"
+                                               name="recipient_profile_ids"
+                                               value="{{ person.id }}"
+                                               data-recipient-item="mensajes"
+                                               data-recipient-label="{{ person.full_name }}"
+                                               data-recipient-meta="{{ person.role.value | title if person.role else '' }}"
+                                               onchange="EstudiaRecipients.update('mensajes')">
+                                        <span>
+                                            <strong>{{ person.full_name }}</strong>
+                                            {% if person.role %}
+                                                <span class="muted">· {{ person.role.value | title }}</span>
+                                            {% endif %}
+                                        </span>
+                                    </label>
+                                {% endfor %}
+                            </div>
+                        </details>
+                    {% endfor %}
+                </div>
+                <small class="muted">Usá el buscador para localizar personas puntuales o desplegá cada grupo para incluir/excluir miembros específicos.</small>
+            </div>
+            <small class="muted">Si no elegís a nadie, el mensaje se enviará solo a la clase seleccionada arriba.</small>
 
             <label>Mensaje</label>
             <textarea name="mensaje_texto" placeholder="Escribe la comunicación" required></textarea>
@@ -113,3 +214,77 @@
     </div>
 </div>
 {% endblock %}
+
+<script>
+window.EstudiaRecipientsInitialized = window.EstudiaRecipientsInitialized || {};
+const EstudiaRecipients = window.EstudiaRecipients || {
+    update(id) {
+        const selector = document.querySelector(`[data-recipient-selector="${id}"]`);
+        if (!selector) return;
+        const chipsBox = selector.querySelector(`[data-recipient-chips="${id}"]`);
+        const checked = selector.querySelectorAll(`input[data-recipient-item="${id}"]:checked`);
+        const form = document.querySelector(`[data-recipient-form="${id}"]`);
+        const quickChips = form ? form.querySelectorAll('.recipient-quick input[type="checkbox"][data-chip-label]:checked') : [];
+        chipsBox.innerHTML = '';
+        quickChips.forEach((chip) => {
+            const span = document.createElement('span');
+            span.className = 'chip';
+            span.textContent = chip.dataset.chipLabel;
+            chipsBox.appendChild(span);
+        });
+        checked.forEach((input) => {
+            const span = document.createElement('span');
+            span.className = 'chip';
+            span.textContent = `${input.dataset.recipientLabel}${input.dataset.recipientMeta ? ' · ' + input.dataset.recipientMeta : ''}`;
+            chipsBox.appendChild(span);
+        });
+        if (!chipsBox.childElementCount) {
+            chipsBox.innerHTML = '<span class="muted">No seleccionaste destinatarios adicionales.</span>';
+        }
+    },
+    filter(event, id) {
+        const term = (event.target.value || '').toLowerCase().trim();
+        const selector = document.querySelector(`[data-recipient-selector="${id}"]`);
+        if (!selector) return;
+        selector.querySelectorAll('[data-recipient-name]').forEach((row) => {
+            const name = row.dataset.recipientName || '';
+            const role = row.dataset.recipientRole || '';
+            const match = !term || name.includes(term) || role.includes(term);
+            row.style.display = match ? '' : 'none';
+        });
+    },
+    selectGroup(event, id, checked) {
+        event.preventDefault();
+        const details = event.target.closest('details');
+        if (!details) return;
+        details.querySelectorAll(`input[data-recipient-item="${id}"]`).forEach((input) => {
+            input.checked = checked;
+        });
+        EstudiaRecipients.update(id);
+    },
+    clear(id) {
+        const selector = document.querySelector(`[data-recipient-selector="${id}"]`);
+        if (!selector) return;
+        selector.querySelectorAll(`input[data-recipient-item="${id}"]`).forEach((input) => {
+            input.checked = false;
+        });
+        const form = document.querySelector(`[data-recipient-form="${id}"]`);
+        if (form) {
+            form.querySelectorAll('.recipient-quick input[type="checkbox"]').forEach((input) => {
+                input.checked = false;
+            });
+        }
+        EstudiaRecipients.update(id);
+    },
+    toggleChip(event, id) {
+        EstudiaRecipients.update(id);
+    }
+};
+window.EstudiaRecipients = EstudiaRecipients;
+document.addEventListener('DOMContentLoaded', () => {
+    if (!window.EstudiaRecipientsInitialized['mensajes']) {
+        EstudiaRecipients.update('mensajes');
+        window.EstudiaRecipientsInitialized['mensajes'] = true;
+    }
+});
+</script>

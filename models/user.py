@@ -31,7 +31,7 @@ class Profile(db.Model):
     activation_expires = db.Column(db.DateTime, nullable=True)
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    institution_id = db.Column(db.Integer, db.ForeignKey("institution.id"), nullable=False)
+    institution_id = db.Column(db.Integer, db.ForeignKey("institution.id"), nullable=True)
     role = db.Column(db.Enum(RoleEnum), nullable=False)
     full_name = db.Column(db.String(255), nullable=False)
 

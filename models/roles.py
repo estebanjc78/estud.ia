@@ -1,6 +1,7 @@
 import enum
 
 class RoleEnum(str, enum.Enum):
+    ADMIN = "ADMIN"
     ADMIN_COLEGIO = "ADMIN_COLEGIO"
     RECTOR = "RECTOR"
     PROFESOR = "PROFESOR"

@@ -26,21 +26,84 @@
         <tbody>
         {% for usuario in usuarios %}
             <tr>
-                <td>{{ usuario.email }}</td>
+                <td style="vertical-align:top;">{{ usuario.email }}</td>
                 <td>
-                    {% for perfil in perfiles_por_user.get(usuario.id, []) %}
-                        <div class="pill" style="margin-bottom:4px;">
-                            {{ perfil.full_name }} · {{ perfil.role.name }}
+                    {% set perfiles = perfiles_por_user.get(usuario.id, []) %}
+                    {% if perfiles %}
+                        <div style="display:flex; flex-direction:column; gap:12px;">
+                            {% for perfil in perfiles %}
+                                <div style="border:1px solid var(--brand-border); border-radius:12px; padding:12px;">
+                                    <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                                        <div>
+                                            <strong>{{ perfil.full_name }}</strong><br>
+                                            <span class="muted">{{ perfil.role.name }} · {{ perfil.institution.name if perfil.institution else "Sin institución" }}</span>
+                                        </div>
+                                    </div>
+                                    {% if manageable_users.get(usuario.id) %}
+                                        <details style="margin-top:10px;">
+                                            <summary style="cursor:pointer; color:var(--brand-primary);">Editar perfil</summary>
+                                            <form method="post"
+                                                  action="{{ url_for('admin.admin_update_profile', profile_id=perfil.id) }}"
+                                                  style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                                                <div>
+                                                    <label>Nombre</label>
+                                                    <input type="text" name="full_name" value="{{ perfil.full_name }}">
+                                                </div>
+                                                <div style="display:flex; flex-wrap:wrap; gap:12px;">
+                                                    <div style="flex:1; min-width:160px;">
+                                                        <label>Rol</label>
+                                                        <select name="role">
+                                                            {% for role in roles %}
+                                                                {% set disabled_role = (not can_manage_all and role.name == "ADMIN") %}
+                                                                <option value="{{ role.name }}"
+                                                                        {% if role.name == perfil.role.name %}selected{% endif %}
+                                                                        {% if disabled_role %}disabled{% endif %}>
+                                                                    {{ role.name }}
+                                                                </option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </div>
+                                                    <div style="flex:1; min-width:200px;">
+                                                        <label>Institución</label>
+                                                        {% if can_manage_all %}
+                                                            <select name="institution_id">
+                                                                {% for inst in instituciones %}
+                                                                    <option value="{{ inst.id }}"
+                                                                            {% if inst.id == perfil.institution_id %}selected{% endif %}>
+                                                                        {{ inst.name }}
+                                                                    </option>
+                                                                {% endfor %}
+                                                            </select>
+                                                        {% else %}
+                                                            <div class="muted" style="padding:8px 0;">{{ perfil.institution.name if perfil.institution else "Sin institución" }}</div>
+                                                            <input type="hidden" name="institution_id" value="{{ perfil.institution_id }}">
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                                <button class="btn btn-secondary" type="submit">Actualizar perfil</button>
+                                            </form>
+                                        </details>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
                         </div>
                     {% else %}
                         <span class="muted">Sin perfil</span>
-                    {% endfor %}
+                    {% endif %}
                 </td>
-                <td>
-                    <form method="post" action="{{ url_for('admin.admin_reset_password', user_id=usuario.id) }}" style="display:flex; gap:6px;">
+                <td style="vertical-align:top;">
+                    <form method="post" action="{{ url_for('admin.admin_reset_password', user_id=usuario.id) }}" style="display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap;">
                         <input type="text" name="new_password" placeholder="nueva pass" required>
                         <button class="btn btn-secondary" type="submit">Reset</button>
                     </form>
+                    {% if manageable_users.get(usuario.id) and usuario.id != current_user.id %}
+                        <form method="post" action="{{ url_for('admin.admin_delete_user', user_id=usuario.id) }}">
+                            <button class="btn btn-link" type="submit"
+                                    onclick="return confirm('¿Eliminar el usuario {{ usuario.email }}? Esta acción no se puede deshacer.');">
+                                Eliminar usuario
+                            </button>
+                        </form>
+                    {% endif %}
                 </td>
             </tr>
         {% endfor %}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from models import Profile, Institution
+from models import Profile, Institution, RoleEnum, PlatformTheme
 
 
 class UIConfigService:
@@ -24,41 +24,34 @@ class UIConfigService:
             "school_logo": None,
             "primary_color": None,
             "secondary_color": None,
-            "recompensas": UIConfigService._default_rewards(),
+            "sidebar_color": None,
+            "sidebar_text_color": None,
+            "background_color": None,
+            "login_background": None,
+            "recompensas": [],
         }
 
         if not user or not getattr(user, "id", None):
-            inst = Institution.query.first()
-            if inst:
-                base_config.update(
-                    {
-                        "school_name": inst.name,
-                        "school_logo": inst.logo_url,
-                        "primary_color": inst.primary_color,
-                        "secondary_color": inst.secondary_color,
-                        "recompensas": inst.rewards_config or UIConfigService._default_rewards(),
-                    }
-                )
-            return base_config
+            theme = PlatformTheme.current()
+            cfg = theme.as_config()
+            cfg["recompensas"] = []
+            return cfg
 
         profile = Profile.query.filter_by(user_id=user.id).first()
+        owner_role = getattr(RoleEnum, "ADMIN", None)
+        if profile and profile.role == owner_role:
+            cfg = PlatformTheme.current().as_config()
+            cfg["recompensas"] = []
+            return cfg
         if not profile or not profile.institution:
-            inst = Institution.query.first()
-            if inst:
-                base_config.update(
-                    {
-                        "school_name": inst.name,
-                        "school_logo": inst.logo_url,
-                        "primary_color": inst.primary_color,
-                        "secondary_color": inst.secondary_color,
-                        "recompensas": inst.rewards_config or UIConfigService._default_rewards(),
-                    }
-                )
-            return base_config
+            theme = PlatformTheme.current()
+            cfg = theme.as_config()
+            cfg["recompensas"] = []
+            return cfg
 
         inst = profile.institution
 
-        rewards = inst.rewards_config or UIConfigService._default_rewards()
+        rewards = inst.rewards_config or []
 
         base_config.update(
             {
@@ -66,6 +59,10 @@ class UIConfigService:
                 "school_logo": inst.logo_url,
                 "primary_color": inst.primary_color,
                 "secondary_color": inst.secondary_color,
+                "sidebar_color": inst.primary_color,
+                "sidebar_text_color": None,
+                "background_color": None,
+                "login_background": None,
                 "recompensas": rewards,
             }
         )
@@ -77,8 +74,4 @@ class UIConfigService:
         """
         Placeholder hasta tener CMS real de recompensas.
         """
-        return [
-            {"nombre": "Sticker dorado", "puntos": 50},
-            {"nombre": "Tiempo extra recreo", "puntos": 120},
-            {"nombre": "Líder de actividad", "puntos": 200},
-        ]
+        return []

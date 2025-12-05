@@ -154,64 +154,132 @@
     </div>
 </div>
 
-{% for report in reports %}
-    <div class="card">
-        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
-            <div>
-                <strong>{{ report.scope.value|title }}</strong>
-                <span class="muted">· {{ report.target_label or "Institución" }}</span><br>
-                <small class="muted">Actualizado {{ report.updated_at.strftime("%d/%m %H:%M") if report.updated_at }}</small>
-            </div>
-            <div style="display:flex; gap:8px;">
-                <a class="btn btn-link" href="{{ url_for('download_insight_report', report_id=report.id) }}">Descargar</a>
-            </div>
-        </div>
-        <form method="post" action="{{ url_for('save_insight_report', report_id=report.id) }}" style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
-            <textarea name="final_text" rows="8" style="width:100%; border-radius:12px; border:1px solid var(--brand-border); padding:12px;">{{ report.final_text or report.ai_draft }}</textarea>
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <select name="status">
-                    <option value="draft" {% if report.status == "draft" %}selected{% endif %}>Borrador</option>
-                    <option value="ready" {% if report.status == "ready" %}selected{% endif %}>Listo para enviar</option>
-                </select>
-                <button class="btn btn-primary" type="submit">Guardar cambios</button>
-            </div>
-        </form>
-        <form method="post" action="{{ url_for('send_insight_report', report_id=report.id) }}" style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
-            <label>Destinatarios</label>
-            <div class="recipient-quick">
-                <span class="muted">Selección rápida</span>
-                <div class="chip-row">
-                    <label class="chip">
-                        <input type="checkbox" name="recipient_profile_ids" value="group:students">
-                        Todos los alumnos
-                    </label>
-                    <label class="chip">
-                        <input type="checkbox" name="recipient_profile_ids" value="group:parents">
-                        Familias
-                    </label>
-                    <label class="chip">
-                        <input type="checkbox" name="recipient_profile_ids" value="group:staff">
-                        Equipo
-                    </label>
+<div style="margin-top:24px;">
+    <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:12px;">
+        <h2 style="margin:0;">Historial de reportes</h2>
+        <p class="muted" style="margin:0;">Cada reporte queda guardado. Podés editar tus borradores o reutilizar los de tu equipo sin regenerar con IA.</p>
+    </div>
+
+    {% if reports_own %}
+        <h3 style="margin:12px 0 8px;">Tus borradores recientes</h3>
+        {% for report in reports_own %}
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+                    <div>
+                        <strong>{{ report.scope.value|title }}</strong>
+                        <span class="muted">· {{ report.target_label or "Institución" }}</span><br>
+                        <small class="muted">Última edición {{ report.updated_at.strftime("%d/%m %H:%M") if report.updated_at }}</small>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span class="pill" style="background:rgba(33,85,205,0.08);">{{ report.status|title }}</span>
+                        <a class="btn btn-link" href="{{ url_for('download_insight_report', report_id=report.id) }}">Descargar</a>
+                    </div>
                 </div>
-            </div>
-            <select name="recipient_profile_ids" multiple size="4">
-                {% for group in recipient_groups or [] %}
-                    <optgroup label="{{ group.label }}">
-                        {% for person in group.profiles %}
-                            <option value="{{ person.id }}">{{ person.full_name }}{% if person.role %} · {{ person.role.value | title }}{% endif %}</option>
+                <form method="post" action="{{ url_for('save_insight_report', report_id=report.id) }}" style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+                    <textarea name="final_text" rows="8" style="width:100%; border-radius:12px; border:1px solid var(--brand-border); padding:12px;">{{ report.final_text or report.ai_draft }}</textarea>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <select name="status">
+                            <option value="draft" {% if report.status == "draft" %}selected{% endif %}>Borrador</option>
+                            <option value="ready" {% if report.status == "ready" %}selected{% endif %}>Listo para enviar</option>
+                        </select>
+                        <button class="btn btn-primary" type="submit">Guardar cambios</button>
+                    </div>
+                </form>
+                <form method="post" action="{{ url_for('send_insight_report', report_id=report.id) }}" style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+                    <label>Destinatarios</label>
+                    <div class="recipient-quick">
+                        <span class="muted">Selección rápida</span>
+                        <div class="chip-row">
+                            <label class="chip">
+                                <input type="checkbox" name="recipient_profile_ids" value="group:students">
+                                Todos los alumnos
+                            </label>
+                            <label class="chip">
+                                <input type="checkbox" name="recipient_profile_ids" value="group:parents">
+                                Familias
+                            </label>
+                            <label class="chip">
+                                <input type="checkbox" name="recipient_profile_ids" value="group:staff">
+                                Equipo
+                            </label>
+                        </div>
+                    </div>
+                    <select name="recipient_profile_ids" multiple size="4">
+                        {% for group in recipient_groups or [] %}
+                            <optgroup label="{{ group.label }}">
+                                {% for person in group.profiles %}
+                                    <option value="{{ person.id }}">{{ person.full_name }}{% if person.role %} · {{ person.role.value | title }}{% endif %}</option>
+                                {% endfor %}
+                            </optgroup>
                         {% endfor %}
-                    </optgroup>
-                {% endfor %}
-            </select>
-            <label>Asunto</label>
-            <input type="text" name="subject" placeholder="Reporte académico" value="Reporte {{ report.target_label or report.scope.value|title }}">
-            <button class="btn btn-secondary" type="submit">Enviar por Mensajes</button>
-        </form>
-    </div>
-{% else %}
-    <div class="card">
-        <p class="muted">Aún no generaste reportes con IA.</p>
-    </div>
-{% endfor %}
+                    </select>
+                    <label>Asunto</label>
+                    <input type="text" name="subject" placeholder="Reporte académico" value="Reporte {{ report.target_label or report.scope.value|title }}">
+                    <button class="btn btn-secondary" type="submit">Enviar por Mensajes</button>
+                </form>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if reports_shared %}
+        <h3 style="margin:24px 0 8px;">Guardados por tu equipo</h3>
+        {% for report in reports_shared %}
+            <div class="card" style="border:1px solid rgba(33,85,205,0.2);">
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+                    <div>
+                        <strong>{{ report.scope.value|title }}</strong>
+                        <span class="muted">· {{ report.target_label or "Institución" }}</span><br>
+                        <small class="muted">Autor: {{ report.author.full_name if report.author else "Equipo" }} · Actualizado {{ report.updated_at.strftime("%d/%m %H:%M") if report.updated_at }}</small>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                        <span class="pill" style="background:rgba(33,85,205,0.08);">{{ report.status|title }}</span>
+                        <a class="btn btn-link" href="{{ url_for('download_insight_report', report_id=report.id) }}">Descargar</a>
+                        <form method="post" action="{{ url_for('clone_insight_report', report_id=report.id) }}" style="margin:0;">
+                            <button class="btn btn-secondary" type="submit">Duplicar para editar</button>
+                        </form>
+                    </div>
+                </div>
+                <textarea rows="6" readonly style="width:100%; border-radius:12px; border:1px dashed var(--brand-border); padding:12px; margin-top:12px; background:rgba(0,0,0,0.02);">{{ report.final_text or report.ai_draft }}</textarea>
+                <form method="post" action="{{ url_for('send_insight_report', report_id=report.id) }}" style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+                    <label>Destinatarios</label>
+                    <div class="recipient-quick">
+                        <span class="muted">Selección rápida</span>
+                        <div class="chip-row">
+                            <label class="chip">
+                                <input type="checkbox" name="recipient_profile_ids" value="group:students">
+                                Todos los alumnos
+                            </label>
+                            <label class="chip">
+                                <input type="checkbox" name="recipient_profile_ids" value="group:parents">
+                                Familias
+                            </label>
+                            <label class="chip">
+                                <input type="checkbox" name="recipient_profile_ids" value="group:staff">
+                                Equipo
+                            </label>
+                        </div>
+                    </div>
+                    <select name="recipient_profile_ids" multiple size="4">
+                        {% for group in recipient_groups or [] %}
+                            <optgroup label="{{ group.label }}">
+                                {% for person in group.profiles %}
+                                    <option value="{{ person.id }}">{{ person.full_name }}{% if person.role %} · {{ person.role.value | title }}{% endif %}</option>
+                                {% endfor %}
+                            </optgroup>
+                        {% endfor %}
+                    </select>
+                    <label>Asunto</label>
+                    <input type="text" name="subject" placeholder="Reporte académico" value="Reporte {{ report.target_label or report.scope.value|title }}">
+                    <button class="btn btn-secondary" type="submit">Enviar por Mensajes</button>
+                </form>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if not reports_own and not reports_shared %}
+        <div class="card">
+            <p class="muted">Aún no generaste reportes con IA.</p>
+        </div>
+    {% endif %}
+</div>
 {% endblock %}

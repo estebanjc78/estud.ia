@@ -133,6 +133,26 @@
                 <label>Descripción</label>
                 <textarea name="plan_description" placeholder="Descripción general del plan"></textarea>
             </div>
+            <div>
+                <label>Fuente curricular</label>
+                <select name="curriculum_document_id">
+                    <option value="">Manual</option>
+                    {% for doc in curriculum_documents if doc.status == "ready" %}
+                        <option value="{{ doc.id }}">{{ doc.title }} {% if doc.jurisdiction %}· {{ doc.jurisdiction }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="grid-column:1 / -1; display:flex; flex-direction:column; gap:6px;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" name="curriculum_use_ai">
+                    Usar IA para resumir el plan a partir del documento
+                </label>
+                <label style="display:flex; align-items:center; gap:8px;">
+                    <input type="checkbox" name="curriculum_create_objectives">
+                    Crear objetivos base por área usando el plan oficial
+                </label>
+                <small class="muted">Se filtrará automáticamente el contenido del grado seleccionado.</small>
+            </div>
             <div style="grid-column:1 / -1;">
                 <button class="btn btn-primary" type="submit">Guardar plan</button>
             </div>
@@ -181,6 +201,115 @@
             </div>
         </form>
     </div>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Bibliografía oficial y planes base</h3>
+    <p class="muted">Subí el documento curricular (PDF/TXT) o pegá extractos. El sistema segmenta por grado y área.</p>
+    <div class="grid two" style="gap:16px;">
+        <form method="post" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:10px;">
+            <input type="hidden" name="action" value="upload_curriculum">
+            <strong>Subir archivo</strong>
+            <label>Título</label>
+            <input type="text" name="curriculum_title" placeholder="Diseño curricular CABA">
+            <label>Jurisdicción</label>
+            <input type="text" name="curriculum_jurisdiction" placeholder="Gob. Ciudad de Buenos Aires">
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;">
+                    <label>Año</label>
+                    <input type="number" name="curriculum_year" placeholder="2004">
+                </div>
+                <div style="flex:1;">
+                    <label>Grado mínimo</label>
+                    <select name="curriculum_grade_min">
+                        <option value="">—</option>
+                        {% for number in range(1,8) %}
+                            <option value="{{ number }}">{{ number }}°</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="flex:1;">
+                    <label>Grado máximo</label>
+                    <select name="curriculum_grade_max">
+                        <option value="">—</option>
+                        {% for number in range(1,8) %}
+                            <option value="{{ number }}">{{ number }}°</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <label>Archivo PDF / TXT</label>
+            <input type="file" name="curriculum_file" accept=".pdf,.txt" required>
+            <button class="btn btn-secondary" type="submit">Procesar archivo</button>
+        </form>
+
+        <form method="post" style="display:flex; flex-direction:column; gap:10px;">
+            <input type="hidden" name="action" value="paste_curriculum">
+            <strong>Pegar contenido</strong>
+            <label>Título</label>
+            <input type="text" name="curriculum_title" placeholder="Fragmento oficial">
+            <label>Jurisdicción</label>
+            <input type="text" name="curriculum_jurisdiction" placeholder="Provincia / Ciudad">
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;">
+                    <label>Año</label>
+                    <input type="number" name="curriculum_year" placeholder="2025">
+                </div>
+                <div style="flex:1;">
+                    <label>Grado mínimo</label>
+                    <select name="curriculum_grade_min">
+                        <option value="">—</option>
+                        {% for number in range(1,8) %}
+                            <option value="{{ number }}">{{ number }}°</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="flex:1;">
+                    <label>Grado máximo</label>
+                    <select name="curriculum_grade_max">
+                        <option value="">—</option>
+                        {% for number in range(1,8) %}
+                            <option value="{{ number }}">{{ number }}°</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <label>Texto</label>
+            <textarea name="curriculum_text" rows="6" placeholder="Pega aquí el capítulo del grado..."></textarea>
+            <button class="btn btn-secondary" type="submit">Guardar texto</button>
+        </form>
+    </div>
+    {% if curriculum_documents %}
+        <div style="margin-top:16px;">
+            <h4>Documentos cargados</h4>
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                {% for doc in curriculum_documents %}
+                    <div style="border:1px solid var(--brand-border); border-radius:12px; padding:12px;">
+                        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                            <div>
+                                <strong>{{ doc.title }}</strong>
+                                <div class="muted">
+                                    {{ doc.jurisdiction or "General" }}
+                                    {% if doc.year %} · {{ doc.year }}{% endif %}
+                                </div>
+                                <div class="muted">Segmentos: {{ doc.segment_count }} · Estado: {{ doc.status|title }}</div>
+                            </div>
+                            <div class="muted">
+                                {% if doc.grade_min or doc.grade_max %}
+                                    {{ doc.grade_min or "?" }}° → {{ doc.grade_max or "?" }}°
+                                {% else %}
+                                    Cobertura general
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% if doc.status == "error" %}
+                            <div class="pill" style="background:rgba(239,68,68,0.15); margin-top:8px;">{{ doc.error_message }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
 </div>
 
 <div class="card">

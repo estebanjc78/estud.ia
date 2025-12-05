@@ -18,11 +18,18 @@ class AIClient:
     proveedor real (p. ej. OpenAI) configurando AI_PROVIDER/AI_API_KEY.
     """
 
-    def __init__(self):
+    def __init__(self, *, provider_override: str | None = None, model_override: str | None = None):
         self.api_key = os.getenv("AI_API_KEY") or os.getenv("OPENAI_API_KEY")
 
+        provider_override_norm = (provider_override or "").strip().lower() or None
+        if provider_override_norm and provider_override_norm not in {"openai", "heuristic"}:
+            logger.warning("Proveedor de IA '%s' no soportado. Usamos configuración global.", provider_override)
+            provider_override_norm = None
+
         provider = os.getenv("AI_PROVIDER")
-        if provider:
+        if provider_override_norm:
+            self.provider = provider_override_norm
+        elif provider:
             self.provider = provider.lower()
         elif self.api_key:
             # Si hay clave pero no se configuró proveedor, asumimos OpenAI.
@@ -30,7 +37,9 @@ class AIClient:
         else:
             self.provider = "heuristic"
 
-        self.model = os.getenv("AI_MODEL", "gpt-4o-mini")
+        default_model = os.getenv("AI_MODEL") or "gpt-4o-mini"
+        override_model = (model_override or "").strip()
+        self.model = override_model or default_model
         self.temperature = self._float_env("AI_TEMPERATURE", default=0.2)
         self.max_tokens = int(os.getenv("AI_MAX_TOKENS", "700") or 700)
         self.timeout = self._float_env("AI_TIMEOUT", default=20.0)

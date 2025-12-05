@@ -9,13 +9,16 @@
         :root {
             --brand-primary: {{ config.primary_color or '#1F4B99' }};
             --brand-secondary: {{ config.secondary_color or '#9AB3FF' }};
-            --brand-bg: #f5f6fb;
+            --brand-bg: {{ config.background_color or '#f5f6fb' }};
             --brand-surface: #ffffff;
             --brand-surface-alt: #eef1f8;
             --brand-text: #1f2933;
             --brand-muted: #64748b;
             --brand-border: #e4e9f2;
             --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
+            --sidebar-bg: {{ config.sidebar_color or config.primary_color or '#101828' }};
+            --sidebar-text: {{ config.sidebar_text_color or '#d7e0ff' }};
+            --sidebar-active-bg: rgba(255, 255, 255, 0.15);
         }
 
         * {
@@ -133,8 +136,8 @@
 
         aside.sidebar {
             width: 250px;
-            background: #101828;
-            color: #d7e0ff;
+            background: var(--sidebar-bg);
+            color: var(--sidebar-text);
             padding: 28px 18px;
             display: flex;
             flex-direction: column;
@@ -174,7 +177,7 @@
         }
 
         .sidebar li.active {
-            background: rgba(255,255,255,0.14);
+            background: var(--sidebar-active-bg);
         }
 
         .sidebar li.muted {
@@ -404,13 +407,14 @@
 {% set show_admin = is_admin if is_admin is defined else False %}
 {% set profile_role = current_profile.role.name if current_profile and current_profile.role else None %}
 {% set role_label = profile_role.replace('_', ' ').title() if profile_role else None %}
-{% set can_manage_plan = profile_role in ["PROFESOR", "ADMIN", "ADMIN_COLEGIO", "RECTOR"] %}
+{% set can_manage_plan = profile_role in ["PROFESOR", "ADMIN_COLEGIO", "RECTOR"] %}
 {% set show_psico = profile_role == "PSICOPEDAGOGIA" %}
-{% set is_teacher = profile_role in ["PROFESOR", "ADMIN", "ADMIN_COLEGIO", "RECTOR"] %}
+{% set is_teacher = profile_role in ["PROFESOR", "ADMIN_COLEGIO", "RECTOR"] %}
 {% set is_student = profile_role == "ALUMNO" %}
 {% set can_access_messages = (profile_role is not none and profile_role != "ALUMNO") %}
-{% set can_view_insights = profile_role in ["PROFESOR", "PSICOPEDAGOGIA", "ADMIN", "ADMIN_COLEGIO", "RECTOR"] %}
+{% set can_view_insights = profile_role in ["PROFESOR", "PSICOPEDAGOGIA", "ADMIN_COLEGIO", "RECTOR"] %}
 {% set bitacora_link = url_for('profe') + '#bitacora' %}
+{% set owner_mode = (profile_role == "ADMIN") %}
 
 <header>
     <div class="brand">
@@ -426,7 +430,7 @@
         </div>
     </div>
     <div class="user-info">
-        <div class="user-name">
+        <div class="user-name" style="color:white;">
             {% if current_user.is_authenticated %}
                 {{ current_display_name }}
                 {% if role_label %} · {{ role_label }}{% endif %}
@@ -436,49 +440,57 @@
         </div>
         <div class="user-actions">
             {% if current_user.is_authenticated %}
-                <a href="{{ url_for('auth.profile') }}">Perfil</a>
-                <a href="{{ url_for('auth.logout') }}">Salir</a>
+                <a href="{{ url_for('auth.profile') }}" style="color:white;">Perfil</a>
+                <a href="{{ url_for('auth.logout') }}" style="color:white;">Salir</a>
             {% else %}
-                <a href="{{ url_for('auth.login_form') }}">Ingresar</a>
+                <a href="{{ url_for('auth.login_form') }}" style="color:white;">Ingresar</a>
             {% endif %}
         </div>
     </div>
 </header>
 
 <nav class="main-nav">
-    <div class="nav-left">
-        <a href="{{ url_for('home') }}">Inicio</a>
-        {% if can_manage_plan %}
-            <a href="{{ url_for('plan_view') }}">Plan de estudio</a>
-        {% endif %}
-        {% if is_teacher %}
-            <a href="{{ url_for('profe') }}">Clases</a>
-            <a href="{{ url_for('tareas') }}">Tareas</a>
-        {% endif %}
-        {% if is_teacher %}
-            <a href="{{ bitacora_link }}">Bitácora</a>
-        {% endif %}
-        {% if can_view_insights %}
-            <a href="{{ url_for('insights') }}">Insights</a>
-        {% endif %}
-        {% if can_access_messages %}
-            <a href="{{ url_for('mensajes') }}">Mensajes</a>
-        {% endif %}
-        {% if is_student %}
-            <a href="{{ url_for('alumno_portal') }}">Portal alumno</a>
-            <a href="{{ url_for('tareas') }}">Tareas</a>
-        {% endif %}
-        {% if show_psico %}
-            <a href="{{ url_for('psico_panel') }}">Psicopedagogía</a>
-        {% endif %}
-    </div>
-    <div class="nav-right">
-        {% if show_admin %}
-            <a href="{{ url_for('admin.admin_structure') }}">Estructura</a>
-            <a href="{{ url_for('admin.admin_usuarios') }}">Admin usuarios</a>
-            <a href="{{ url_for('admin.cms') }}">CMS</a>
-        {% endif %}
-    </div>
+    {% if profile_role == "ADMIN" %}
+        <div class="nav-left">
+            <a href="{{ url_for('owner_institutions') }}">Instituciones</a>
+        </div>
+        <div class="nav-right"></div>
+    {% else %}
+        {% set home_url = url_for('owner_institutions') if owner_mode else url_for('home') %}
+        <div class="nav-left">
+            <a href="{{ home_url }}">Inicio</a>
+            {% if can_manage_plan %}
+                <a href="{{ url_for('plan_view') }}">Plan de estudio</a>
+            {% endif %}
+            {% if is_teacher %}
+                <a href="{{ url_for('profe') }}">Clases</a>
+                <a href="{{ url_for('tareas') }}">Tareas</a>
+            {% endif %}
+            {% if is_teacher %}
+                <a href="{{ bitacora_link }}">Bitácora</a>
+            {% endif %}
+            {% if can_view_insights %}
+                <a href="{{ url_for('insights') }}">Insights</a>
+            {% endif %}
+            {% if can_access_messages %}
+                <a href="{{ url_for('mensajes') }}">Mensajes</a>
+            {% endif %}
+            {% if is_student %}
+                <a href="{{ url_for('alumno_portal') }}">Portal alumno</a>
+                <a href="{{ url_for('tareas') }}">Tareas</a>
+            {% endif %}
+            {% if show_psico %}
+                <a href="{{ url_for('psico_panel') }}">Psicopedagogía</a>
+            {% endif %}
+        </div>
+        <div class="nav-right">
+            {% if show_admin %}
+                <a href="{{ url_for('admin.admin_structure') }}">Estructura</a>
+                <a href="{{ url_for('admin.admin_usuarios') }}">Admin usuarios</a>
+                <a href="{{ url_for('admin.cms') }}">CMS</a>
+            {% endif %}
+        </div>
+    {% endif %}
 </nav>
 
 <div class="layout">
@@ -486,49 +498,54 @@
         <div>
             <h3>Panel</h3>
             <ul>
-                <li class="active"><a href="{{ url_for('home') }}">Resumen</a></li>
-                {% if can_manage_plan %}
-                    <li><a href="{{ url_for('plan_view') }}">Plan de estudio</a></li>
-                {% endif %}
-                {% if is_teacher %}
-                    <li><a href="{{ url_for('profe') }}">Clases y actividades</a></li>
-                    <li><a href="{{ url_for('tareas') }}">Tareas</a></li>
-                    <li><a href="{{ bitacora_link }}">Bitácora</a></li>
-                {% endif %}
-                {% if is_student %}
-                    <li><a href="{{ url_for('alumno_portal') }}">Portal alumno</a></li>
-                    <li><a href="{{ url_for('tareas') }}">Tareas</a></li>
-                {% endif %}
-                {% if show_psico %}
-                    <li><a href="{{ url_for('psico_panel') }}">Psicopedagogía</a></li>
-                {% endif %}
-                {% if can_access_messages %}
-                    <li><a href="{{ url_for('mensajes') }}">Mensajes</a></li>
-                {% endif %}
-                {% if can_view_insights %}
-                    <li><a href="{{ url_for('insights') }}">Insights</a></li>
-                {% endif %}
-                {% if show_admin %}
-                    <li><a href="{{ url_for('admin.admin_structure') }}">Estructura escolar</a></li>
-                    <li><a href="{{ url_for('admin.admin_usuarios') }}">Admin usuarios</a></li>
-                    <li><a href="{{ url_for('admin.cms') }}">CMS institucional</a></li>
+                {% if profile_role == "ADMIN" %}
+                    <li class="active"><a href="{{ url_for('owner_institutions') }}">Instituciones</a></li>
+                {% else %}
+                    {% set home_url = url_for('owner_institutions') if owner_mode else url_for('home') %}
+                    <li class="active"><a href="{{ home_url }}">Resumen</a></li>
+                    {% if can_manage_plan %}
+                        <li><a href="{{ url_for('plan_view') }}">Plan de estudio</a></li>
+                    {% endif %}
+                    {% if is_teacher %}
+                        <li><a href="{{ url_for('profe') }}">Clases y actividades</a></li>
+                        <li><a href="{{ url_for('tareas') }}">Tareas</a></li>
+                        <li><a href="{{ bitacora_link }}">Bitácora</a></li>
+                    {% endif %}
+                    {% if is_student %}
+                        <li><a href="{{ url_for('alumno_portal') }}">Portal alumno</a></li>
+                        <li><a href="{{ url_for('tareas') }}">Tareas</a></li>
+                    {% endif %}
+                    {% if show_psico %}
+                        <li><a href="{{ url_for('psico_panel') }}">Psicopedagogía</a></li>
+                    {% endif %}
+                    {% if can_access_messages %}
+                        <li><a href="{{ url_for('mensajes') }}">Mensajes</a></li>
+                    {% endif %}
+                    {% if can_view_insights %}
+                        <li><a href="{{ url_for('insights') }}">Insights</a></li>
+                    {% endif %}
+                    {% if show_admin %}
+                        <li><a href="{{ url_for('admin.admin_structure') }}">Estructura escolar</a></li>
+                        <li><a href="{{ url_for('admin.admin_usuarios') }}">Admin usuarios</a></li>
+                        <li><a href="{{ url_for('admin.cms') }}">CMS institucional</a></li>
+                    {% endif %}
                 {% endif %}
             </ul>
         </div>
 
-        <div>
-            <h3>Recompensas</h3>
-            <div style="display:flex; flex-direction:column; gap:6px;">
-                {% for reward in (config.recompensas or []) %}
-                    <div style="background: rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 10px;">
-                        <div style="font-size:0.85rem;">{{ reward.nombre }}</div>
-                        <div style="font-size:0.75rem; opacity:0.7;">{{ reward.puntos }} pts</div>
-                    </div>
-                {% else %}
-                    <div class="muted">Configura recompensas en el CMS.</div>
-                {% endfor %}
+        {% if profile_role != "ADMIN" and config.recompensas %}
+            <div>
+                <h3>Recompensas</h3>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                    {% for reward in config.recompensas %}
+                        <div style="background: rgba(255,255,255,0.08); border-radius: 10px; padding: 8px 10px;">
+                            <div style="font-size:0.85rem;">{{ reward.nombre }}</div>
+                            <div style="font-size:0.75rem; opacity:0.7;">{{ reward.puntos }} pts</div>
+                        </div>
+                    {% endfor %}
+                </div>
             </div>
-        </div>
+        {% endif %}
     </aside>
 
     <main class="content">

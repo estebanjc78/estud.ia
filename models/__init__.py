@@ -15,6 +15,8 @@ from .task_submission import (
 )
 from .insight_report import InsightReport, ReportScope
 from .help_usage import TaskHelpUsage
+from .curriculum import CurriculumDocument, CurriculumSegment
+from .platform_theme import PlatformTheme
 
 __all__ = [
     "RoleEnum",
@@ -39,4 +41,7 @@ __all__ = [
     "InsightReport",
     "ReportScope",
     "TaskHelpUsage",
+    "CurriculumDocument",
+    "CurriculumSegment",
+    "PlatformTheme",
 ]
