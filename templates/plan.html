@@ -22,9 +22,23 @@
                     <div>
                         <h3 style="margin:0;">{{ card.plan.name }} {% if card.plan.year %}({{ card.plan.year }}){% endif %}</h3>
                         <p class="muted" style="margin:4px 0 0;">
-                            Grado: {{ card.plan.grade.name if card.plan.grade else "Sin grado" }}
-                            · {{ card.plan.description or "Sin descripción" }}
+                            {% if card.plan.grade %}
+                                Plan específico para {{ card.plan.grade.name }}
+                            {% elif card.grade_labels %}
+                                Objetivos calendarizados para: {{ card.grade_labels|join(", ") }}
+                            {% else %}
+                                Cobertura institucional general
+                            {% endif %}
+                            · {{ card.plan.jurisdiction or "Jurisdicción general" }}
                         </p>
+                        <p class="muted" style="margin:4px 0 0;">{{ card.plan.description or "Sin descripción" }}</p>
+                        {% if card.grade_labels %}
+                            <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px;">
+                                {% for label in card.grade_labels %}
+                                    <span class="pill">{{ label }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
                     </div>
                     <div class="pill">{{ card.plan.objectives|length }} objetivos</div>
                 </div>
@@ -72,15 +86,34 @@
                         <div style="display:flex; flex-direction:column; gap:12px;">
                             {% for objective in period.objectives %}
                                 <div style="border:1px solid var(--brand-border); border-radius:12px; padding:12px;">
-                                    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:4px;">
-                                        <strong>{{ objective.title }}</strong>
-                                        {% if objective.start_date or objective.end_date %}
-                                            <span class="pill">
-                                                {{ objective.start_date or "?" }} → {{ objective.end_date or "?" }}
-                                            </span>
-                                        {% endif %}
+                                    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                                    <div>
+                                        <div style="font-weight:600;">{{ objective.title }}</div>
+                                        <div class="muted" style="font-size:0.85rem;">
+                                            {{ objective.grade.name if objective.grade else "Grado sin definir" }}
+                                            {% if objective.subject_label %} · {{ objective.subject_label }}{% endif %}
+                                        </div>
+                                    </div>
+                                        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                                            {% if objective.period_label %}
+                                                <span class="pill">{{ objective.period_label }}</span>
+                                            {% endif %}
+                                            {% if objective.start_date or objective.end_date %}
+                                                <span class="pill">
+                                                    {{ objective.start_date or "?" }} → {{ objective.end_date or "?" }}
+                                                </span>
+                                            {% endif %}
+                                        </div>
                                     </div>
                                     <p class="muted" style="margin:6px 0 10px;">{{ objective.description or "Sin descripción" }}</p>
+                                    {% if objective.class_ideas %}
+                                        <div style="margin-bottom:10px; padding:10px; border-radius:10px; background:rgba(33,85,205,0.06);">
+                                            <strong style="font-size:0.85rem; display:block;">Ideas de clases</strong>
+                                            <div style="font-size:0.85rem; color:#475569; margin-top:4px;">
+                                                {{ objective.class_ideas|replace('\n','<br>')|safe }}
+                                            </div>
+                                        </div>
+                                    {% endif %}
                                     <div>
                                         <span class="muted">Clases programadas:</span>
                                         <ul style="margin:6px 0 0 16px;">
@@ -94,11 +127,43 @@
                                             {% endfor %}
                                         </ul>
                                     </div>
+                                    {% if can_edit %}
+                                        <details style="margin-top:10px;">
+                                            <summary style="cursor:pointer; font-size:0.85rem; color:#b91c1c;">Eliminar objetivo</summary>
+                                            <form method="post" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                                                <input type="hidden" name="action" value="delete_objective">
+                                                <input type="hidden" name="objective_id" value="{{ objective.id }}">
+                                                <label style="font-size:0.85rem;">Escribe el título exacto para confirmar</label>
+                                                <input type="text" name="confirm_objective_title" placeholder="{{ objective.title }}">
+                                                <label style="font-size:0.85rem;">
+                                                    <input type="checkbox" name="confirm_objective_checkbox">
+                                                    Estoy seguro de eliminar este objetivo (y sus clases asociadas).
+                                                </label>
+                                                <button class="btn btn-secondary" type="submit" style="background:#dc2626; border-color:#dc2626;">Eliminar objetivo</button>
+                                            </form>
+                                        </details>
+                                    {% endif %}
                                 </div>
                             {% endfor %}
                         </div>
                     </div>
                 {% endfor %}
+                {% if can_edit %}
+                    <details style="margin-top:16px;">
+                        <summary style="cursor:pointer; color:#b91c1c;">Eliminar este plan</summary>
+                        <form method="post" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                            <input type="hidden" name="action" value="delete_plan">
+                            <input type="hidden" name="plan_id" value="{{ card.plan.id }}">
+                            <label style="font-size:0.85rem;">Escribe el nombre exacto del plan</label>
+                            <input type="text" name="confirm_plan_name" placeholder="{{ card.plan.name }}">
+                            <label style="font-size:0.85rem;">
+                                <input type="checkbox" name="confirm_plan_checkbox">
+                                Confirmo que deseo eliminar este plan y todos sus objetivos/clases.
+                            </label>
+                            <button class="btn btn-secondary" type="submit" style="background:#dc2626; border-color:#dc2626;">Eliminar plan</button>
+                        </form>
+                    </details>
+                {% endif %}
             </div>
         {% endfor %}
     {% else %}
@@ -107,259 +172,339 @@
 </div>
 
 {% if can_edit %}
-<div class="grid two">
-    <div class="card">
-        <h3 style="margin-top:0;">Crear plan</h3>
-        <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
-            <input type="hidden" name="action" value="create_plan">
-            <div>
-                <label>Nombre</label>
-                <input type="text" name="plan_name" required>
-            </div>
-            <div>
-                <label>Año lectivo</label>
-                <input type="number" name="plan_year" placeholder="2025">
-            </div>
-            <div>
-                <label>Grado</label>
-                <select name="grade_id" required>
-                    <option value="">Selecciona</option>
-                    {% for grade in grades %}
-                        <option value="{{ grade.id }}">{{ grade.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div style="grid-column:1 / -1;">
-                <label>Descripción</label>
-                <textarea name="plan_description" placeholder="Descripción general del plan"></textarea>
-            </div>
-            <div>
-                <label>Fuente curricular</label>
-                <select name="curriculum_document_id">
-                    <option value="">Manual</option>
-                    {% for doc in curriculum_documents if doc.status == "ready" %}
-                        <option value="{{ doc.id }}">{{ doc.title }} {% if doc.jurisdiction %}· {{ doc.jurisdiction }}{% endif %}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div style="grid-column:1 / -1; display:flex; flex-direction:column; gap:6px;">
-                <label style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" name="curriculum_use_ai">
-                    Usar IA para resumir el plan a partir del documento
-                </label>
-                <label style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" name="curriculum_create_objectives">
-                    Crear objetivos base por área usando el plan oficial
-                </label>
-                <small class="muted">Se filtrará automáticamente el contenido del grado seleccionado.</small>
-            </div>
-            <div style="grid-column:1 / -1;">
-                <button class="btn btn-primary" type="submit">Guardar plan</button>
-            </div>
-        </form>
-    </div>
-
-    <div class="card">
-        <h3 style="margin-top:0;">Agregar objetivo</h3>
-        <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
-            <input type="hidden" name="action" value="create_objective">
-            <div style="grid-column:1 / -1;">
-                <label>Plan</label>
-                <select name="plan_id" required>
-                    <option value="">Selecciona</option>
-                    {% for plan in plan_options %}
-                        <option value="{{ plan.id }}">{{ plan.name }} {% if plan.year %}({{ plan.year }}){% endif %}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label>Título</label>
-                <input type="text" name="objective_title" required>
-            </div>
-            <div>
-                <label>Etiqueta de período</label>
-                <input type="text" name="period_label" placeholder="Ej: Marzo, Trimestre 1">
-            </div>
-            <div>
-                <label>Inicio</label>
-                <input type="date" name="objective_start">
-            </div>
-            <div>
-                <label>Fin</label>
-                <input type="date" name="objective_end">
-            </div>
-            <div>
-                <label>Orden</label>
-                <input type="number" name="objective_order" min="0">
-            </div>
-            <div style="grid-column:1 / -1;">
-                <label>Descripción</label>
-                <textarea name="objective_description"></textarea>
-            </div>
-            <div style="grid-column:1 / -1;">
-                <button class="btn btn-secondary" type="submit">Agregar objetivo</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <div class="card">
-    <h3 style="margin-top:0;">Bibliografía oficial y planes base</h3>
-    <p class="muted">Subí el documento curricular (PDF/TXT) o pegá extractos. El sistema segmenta por grado y área.</p>
-    <div class="grid two" style="gap:16px;">
-        <form method="post" enctype="multipart/form-data" style="display:flex; flex-direction:column; gap:10px;">
-            <input type="hidden" name="action" value="upload_curriculum">
-            <strong>Subir archivo</strong>
-            <label>Título</label>
-            <input type="text" name="curriculum_title" placeholder="Diseño curricular CABA">
-            <label>Jurisdicción</label>
-            <input type="text" name="curriculum_jurisdiction" placeholder="Gob. Ciudad de Buenos Aires">
-            <div style="display:flex; gap:10px;">
-                <div style="flex:1;">
-                    <label>Año</label>
-                    <input type="number" name="curriculum_year" placeholder="2004">
-                </div>
-                <div style="flex:1;">
-                    <label>Grado mínimo</label>
-                    <select name="curriculum_grade_min">
-                        <option value="">—</option>
-                        {% for number in range(1,8) %}
-                            <option value="{{ number }}">{{ number }}°</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div style="flex:1;">
-                    <label>Grado máximo</label>
-                    <select name="curriculum_grade_max">
-                        <option value="">—</option>
-                        {% for number in range(1,8) %}
-                            <option value="{{ number }}">{{ number }}°</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
-            <label>Archivo PDF / TXT</label>
-            <input type="file" name="curriculum_file" accept=".pdf,.txt" required>
-            <button class="btn btn-secondary" type="submit">Procesar archivo</button>
-        </form>
-
-        <form method="post" style="display:flex; flex-direction:column; gap:10px;">
-            <input type="hidden" name="action" value="paste_curriculum">
-            <strong>Pegar contenido</strong>
-            <label>Título</label>
-            <input type="text" name="curriculum_title" placeholder="Fragmento oficial">
-            <label>Jurisdicción</label>
-            <input type="text" name="curriculum_jurisdiction" placeholder="Provincia / Ciudad">
-            <div style="display:flex; gap:10px;">
-                <div style="flex:1;">
-                    <label>Año</label>
-                    <input type="number" name="curriculum_year" placeholder="2025">
-                </div>
-                <div style="flex:1;">
-                    <label>Grado mínimo</label>
-                    <select name="curriculum_grade_min">
-                        <option value="">—</option>
-                        {% for number in range(1,8) %}
-                            <option value="{{ number }}">{{ number }}°</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div style="flex:1;">
-                    <label>Grado máximo</label>
-                    <select name="curriculum_grade_max">
-                        <option value="">—</option>
-                        {% for number in range(1,8) %}
-                            <option value="{{ number }}">{{ number }}°</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
-            <label>Texto</label>
-            <textarea name="curriculum_text" rows="6" placeholder="Pega aquí el capítulo del grado..."></textarea>
-            <button class="btn btn-secondary" type="submit">Guardar texto</button>
-        </form>
-    </div>
-    {% if curriculum_documents %}
-        <div style="margin-top:16px;">
-            <h4>Documentos cargados</h4>
-            <div style="display:flex; flex-direction:column; gap:12px;">
-                {% for doc in curriculum_documents %}
-                    <div style="border:1px solid var(--brand-border); border-radius:12px; padding:12px;">
-                        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-                            <div>
-                                <strong>{{ doc.title }}</strong>
-                                <div class="muted">
-                                    {{ doc.jurisdiction or "General" }}
-                                    {% if doc.year %} · {{ doc.year }}{% endif %}
-                                </div>
-                                <div class="muted">Segmentos: {{ doc.segment_count }} · Estado: {{ doc.status|title }}</div>
-                            </div>
-                            <div class="muted">
-                                {% if doc.grade_min or doc.grade_max %}
-                                    {{ doc.grade_min or "?" }}° → {{ doc.grade_max or "?" }}°
-                                {% else %}
-                                    Cobertura general
-                                {% endif %}
-                            </div>
-                        </div>
-                        {% if doc.status == "error" %}
-                            <div class="pill" style="background:rgba(239,68,68,0.15); margin-top:8px;">{{ doc.error_message }}</div>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-            </div>
-        </div>
-    {% endif %}
-</div>
-
-<div class="card">
-    <h3 style="margin-top:0;">Programar clase para un objetivo</h3>
-    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:10px;">
-        <input type="hidden" name="action" value="create_lesson">
-        <div style="grid-column:1 / -1;">
-            <label>Objetivo</label>
-            <select name="objective_id" required>
-                <option value="">Selecciona</option>
-                {% for objective in objective_choices %}
-                    <option value="{{ objective.id }}">
-                        {{ objective.study_plan.name if objective.study_plan else "Plan" }} · {{ objective.title }}
-                    </option>
-                {% endfor %}
-            </select>
+    <h3 style="margin-top:0;">Carga del plan</h3>
+    <p class="muted">Titulá el plan y adjuntá el documento oficial (PDF/TXT) o pegá el texto completo.</p>
+    <form method="post" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <input type="hidden" name="action" value="create_plan">
+        <div>
+            <label>Nombre del plan</label>
+            <input type="text" name="plan_name" required placeholder="Ej: Plan anual 2025">
         </div>
         <div>
-            <label>Título de la clase</label>
-            <input type="text" name="lesson_title" required>
+            <label>Año lectivo</label>
+            <input type="number" name="plan_year" placeholder="2025">
         </div>
         <div>
-            <label>Fecha</label>
-            <input type="date" name="lesson_date" required>
-        </div>
-        <div>
-            <label>Hora inicio</label>
-            <input type="time" name="lesson_start_time">
-        </div>
-        <div>
-            <label>Hora fin</label>
-            <input type="time" name="lesson_end_time">
-        </div>
-        <div>
-            <label>Sección</label>
-            <select name="section_id">
-                <option value="">General</option>
-                {% for section in sections %}
-                    <option value="{{ section.id }}">{{ section.name }} ({{ section.grade.name }})</option>
-                {% endfor %}
-            </select>
+            <label>Jurisdicción / sistema</label>
+            <input type="text" name="plan_jurisdiction" placeholder="Ej: CABA, Córdoba, etc.">
         </div>
         <div style="grid-column:1 / -1;">
-            <label>Descripción / agenda</label>
-            <textarea name="lesson_description"></textarea>
+            <label>Descripción general</label>
+            <textarea name="plan_description" placeholder="Resumen o notas generales del plan."></textarea>
+        </div>
+        <div style="grid-column:1 / -1; border-top:1px solid var(--brand-border); padding-top:12px;">
+            <label>Adjuntar documento oficial (PDF/TXT)</label>
+            <input type="file" name="plan_file" accept=".pdf,.txt">
+            <small class="muted">Subí un único archivo grande y lo segmentamos automáticamente.</small>
         </div>
         <div style="grid-column:1 / -1;">
-            <button class="btn btn-primary" type="submit">Programar clase</button>
+            <label>Pegar texto</label>
+            <textarea name="plan_text" rows="5" placeholder="Pegá el contenido si lo tenés en formato texto."></textarea>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">Guardar plan</button>
         </div>
     </form>
 </div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Vincular documento a un plan existente</h3>
+    <p class="muted">Seleccioná el plan y adjuntá un PDF/TXT o pegá el texto. No reutilizamos documentos previos: cada plan debe subir su versión oficial.</p>
+    <form method="post" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <input type="hidden" name="action" value="update_plan_document">
+        <div>
+            <label>Plan</label>
+            <select name="target_plan_id" required>
+                <option value="">Selecciona</option>
+                {% for plan in plan_options %}
+                    <option value="{{ plan.id }}">{{ plan.name }} {% if plan.year %}({{ plan.year }}){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="grid-column:1 / -1; border-top:1px solid var(--brand-border); padding-top:12px;">
+            <label>Subir nuevo archivo (PDF/TXT)</label>
+            <input type="file" name="link_plan_file" accept=".pdf,.txt">
+            <small class="muted">Adjuntá el mismo documento que usa el colegio. Cada plan guarda su propio archivo.</small>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Pegar texto</label>
+            <textarea name="link_plan_text" rows="4" placeholder="Pegá el contenido si lo tenés en formato texto."></textarea>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-secondary" type="submit">Vincular documento</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Objetivos por grado</h3>
+    <p class="muted">Tomá el plan general y calendarizá cada objetivo indicando el grado, el período y las ideas de clases rápidas.</p>
+    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+        <input type="hidden" name="action" value="create_objective">
+        <div style="grid-column:1 / -1;">
+            <label>Plan</label>
+            <select name="plan_id" id="objective_plan_select" required>
+                <option value="">Selecciona</option>
+                {% for plan in plan_options %}
+                    <option value="{{ plan.id }}">{{ plan.name }} {% if plan.year %}({{ plan.year }}){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Grado</label>
+            <select name="objective_grade_id" id="objective_grade_select" required>
+                <option value="">Selecciona</option>
+                {% for grade in grades %}
+                    <option value="{{ grade.id }}">{{ grade.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Materia / área detectada</label>
+            <select id="objective_area_select" style="width:100%;" disabled>
+                <option value="">Selecciona</option>
+            </select>
+            <div id="objective_area_custom" style="display:none; margin-top:6px;">
+                <input type="text" id="objective_subject_custom_input" placeholder="Ej: Teatro">
+            </div>
+            <input type="hidden" name="objective_subject" id="objective_subject_input" value="{{ request.form.get('objective_subject', '') }}">
+            <small class="muted">El menú se llena con las áreas detectadas en el documento del plan. Elegí “Otra área” para escribirla.</small>
+        </div>
+        <div>
+            <label>Título del objetivo</label>
+            <input type="text" name="objective_title" id="objective_title_input" required placeholder="Ej: Operaciones básicas">
+        </div>
+        <div>
+            <label>Etiqueta de período</label>
+            <input type="text" name="period_label" id="objective_period_input" placeholder="Ej: Trimestre 1">
+        </div>
+        <div>
+            <label>Inicio</label>
+            <input type="date" name="objective_start" id="objective_start_input">
+        </div>
+        <div>
+            <label>Fin</label>
+            <input type="date" name="objective_end" id="objective_end_input">
+        </div>
+        <div>
+            <label>Orden</label>
+            <input type="number" name="objective_order" id="objective_order_input" min="0">
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Descripción</label>
+            <textarea name="objective_description" id="objective_description_input" placeholder="Contexto o temas que se verán."></textarea>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Borrador de clases</label>
+            <textarea name="objective_class_ideas" id="objective_class_ideas_input" placeholder="Ej: Clase sumas · Clase restas · Clase multiplicación"></textarea>
+            <small class="muted">Solo notas rápidas. Los detalles se definen luego en el módulo de Clases.</small>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-secondary" type="submit">Agregar objetivo</button>
+        </div>
+    </form>
+    <div id="objective_suggestions" style="margin-top:20px; border:1px dashed var(--brand-border); border-radius:16px; padding:16px;">
+        <h4 style="margin:0 0 6px;">Contenidos sugeridos</h4>
+        <p class="muted" id="objective_suggestions_status" style="margin:0;">Selecciona un plan y un grado para ver los objetivos detectados automáticamente.</p>
+        <div id="objective_suggestions_list" style="margin-top:12px; display:flex; flex-direction:column; gap:12px;"></div>
+    </div>
+</div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(function() {
+    const planSelect = document.getElementById('objective_plan_select');
+    const gradeSelect = document.getElementById('objective_grade_select');
+    const areaSelect = document.getElementById('objective_area_select');
+    const areaCustomWrapper = document.getElementById('objective_area_custom');
+    const areaCustomInput = document.getElementById('objective_subject_custom_input');
+    const subjectHiddenInput = document.getElementById('objective_subject_input');
+    const suggestionsStatus = document.getElementById('objective_suggestions_status');
+    const suggestionsList = document.getElementById('objective_suggestions_list');
+
+    const titleInput = document.getElementById('objective_title_input');
+    const periodInput = document.getElementById('objective_period_input');
+    const descriptionInput = document.getElementById('objective_description_input');
+    const classIdeasInput = document.getElementById('objective_class_ideas_input');
+
+    if (!planSelect || !gradeSelect || !areaSelect || !subjectHiddenInput || !suggestionsStatus || !suggestionsList) {
+        return;
+    }
+
+    let areaData = [];
+
+    function resetSuggestions(message) {
+        areaData = [];
+        areaSelect.innerHTML = '<option value=\"\">Selecciona</option><option value=\"__custom__\">Otra área...</option>';
+        areaSelect.disabled = true;
+        areaCustomWrapper.style.display = 'none';
+        areaCustomInput.value = '';
+        subjectHiddenInput.value = '';
+        suggestionsStatus.textContent = message || 'Selecciona un plan y un grado para ver los objetivos detectados automáticamente.';
+        suggestionsList.innerHTML = '';
+    }
+
+    function populateAreaSelect() {
+        areaSelect.disabled = areaData.length === 0;
+        const options = ['<option value=\"\">Selecciona</option>'];
+        areaData.forEach(area => {
+            options.push(`<option value=\"${area.area}\">${area.area}</option>`);
+        });
+        options.push('<option value=\"__custom__\">Otra área...</option>');
+        areaSelect.innerHTML = options.join('');
+    }
+
+    function renderSuggestionsForArea(areaName) {
+        suggestionsList.innerHTML = '';
+        if (!areaName) {
+            suggestionsStatus.textContent = 'Elegí un área para ver las propuestas generadas.';
+            return;
+        }
+        const areaEntry = areaData.find(item => item.area === areaName);
+        if (!areaEntry) {
+            suggestionsStatus.textContent = 'No encontramos objetivos para esa combinación.';
+            return;
+        }
+        const gradeLabel = gradeSelect && gradeSelect.selectedIndex > 0
+            ? gradeSelect.options[gradeSelect.selectedIndex].text.trim()
+            : '';
+        const planLabel = planSelect && planSelect.selectedIndex > 0
+            ? planSelect.options[planSelect.selectedIndex].text.trim()
+            : '';
+        const scopeText = [
+            gradeLabel ? `para ${gradeLabel}` : '',
+            planLabel ? `del plan ${planLabel}` : '',
+        ].filter(Boolean).join(' ');
+        const statusLine = scopeText ? `${areaName} ${scopeText}` : areaName;
+        suggestionsStatus.textContent = `Contenidos detectados para ${statusLine}. Hace clic en “Usar” para completar el formulario.`;
+        areaEntry.suggestions.forEach((suggestion, index) => {
+            const card = document.createElement('div');
+            card.style.border = '1px solid var(--brand-border)';
+            card.style.borderRadius = '12px';
+            card.style.padding = '12px';
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+                    <div>
+                        <strong>${suggestion.title || (areaName + ' · Objetivo')}</strong>
+                        <p class="muted" style="margin:4px 0 0; font-size:0.85rem;">
+                            ${gradeLabel ? `${gradeLabel} · ` : ''}${areaName} · Sugerencia ${index + 1}
+                        </p>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-small">Usar</button>
+                </div>
+                <p style="margin:10px 0; white-space:pre-line;">${suggestion.description || 'Sin descripción disponible.'}</p>
+                <div style="font-size:0.85rem;">
+                    <strong>Ideas de clase</strong>
+                    <ul style="margin:6px 0 0 18px; padding:0;">
+                        ${suggestion.class_ideas.map(idea => `<li>${idea}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+            const actionBtn = card.querySelector('button');
+            actionBtn.addEventListener('click', () => applySuggestion(areaName, suggestion));
+            suggestionsList.appendChild(card);
+        });
+    }
+
+    function applySuggestion(areaName, suggestion) {
+        areaSelect.value = areaName;
+        areaSelect.dispatchEvent(new Event('change'));
+        if (titleInput) {
+            titleInput.value = suggestion.title || '';
+        }
+        if (descriptionInput) {
+            descriptionInput.value = suggestion.description || '';
+            descriptionInput.focus();
+        }
+        if (periodInput) {
+            periodInput.value = suggestion.period || '';
+        }
+        if (classIdeasInput) {
+            classIdeasInput.value = (suggestion.class_ideas || []).join('\n');
+        }
+    }
+
+    async function fetchSuggestions() {
+        const planId = planSelect ? planSelect.value : null;
+        const gradeId = gradeSelect ? gradeSelect.value : null;
+        if (!planId || !gradeId) {
+            resetSuggestions();
+            return;
+        }
+        suggestionsStatus.textContent = 'Buscando contenidos detectados en el plan...';
+        suggestionsList.innerHTML = '';
+        try {
+            const response = await fetch(`/plan/${planId}/grade/${gradeId}/segments`);
+            if (!response.ok) {
+                let errorMessage = 'No pudimos obtener objetivos automáticos para esta combinación.';
+                try {
+                    const payload = await response.json();
+                    if (payload && payload.message) {
+                        errorMessage = payload.message;
+                    }
+                } catch (_) {
+                    // ignore parse issues
+                }
+                resetSuggestions(errorMessage);
+                return;
+            }
+            const data = await response.json();
+            areaData = data.areas || [];
+            if (!areaData.length) {
+                resetSuggestions(data.message || 'No encontramos segmentos para ese grado en el documento.');
+                return;
+            }
+            populateAreaSelect();
+            subjectHiddenInput.value = '';
+            areaSelect.value = '';
+            const baseInstruction = 'Elegí un área para ver los objetivos detectados automáticamente.';
+            const followup = data.message ? `${data.message} ${baseInstruction}`.trim() : baseInstruction;
+            suggestionsStatus.textContent = followup;
+        } catch (error) {
+            console.error(error);
+            resetSuggestions('Ocurrió un error al traer las sugerencias.');
+        }
+    }
+
+    areaSelect.addEventListener('change', () => {
+        if (areaSelect.value === '__custom__') {
+            areaCustomWrapper.style.display = 'block';
+            subjectHiddenInput.value = areaCustomInput.value.trim();
+            areaCustomInput.focus();
+            suggestionsStatus.textContent = 'Escribe el nombre del área y completa el objetivo manualmente.';
+            suggestionsList.innerHTML = '';
+        } else {
+            areaCustomWrapper.style.display = 'none';
+            areaCustomInput.value = '';
+            subjectHiddenInput.value = areaSelect.value || '';
+            if (areaSelect.value) {
+                renderSuggestionsForArea(areaSelect.value);
+            } else {
+                suggestionsStatus.textContent = 'Selecciona un área para ver los objetivos disponibles.';
+                suggestionsList.innerHTML = '';
+            }
+        }
+    });
+
+    areaCustomInput.addEventListener('input', () => {
+        if (areaSelect.value === '__custom__') {
+            subjectHiddenInput.value = areaCustomInput.value.trim();
+        }
+    });
+
+    if (planSelect) {
+        planSelect.addEventListener('change', fetchSuggestions);
+    }
+    if (gradeSelect) {
+        gradeSelect.addEventListener('change', fetchSuggestions);
+    }
+
+    resetSuggestions();
+    fetchSuggestions();
+})();
+</script>
 {% endblock %}

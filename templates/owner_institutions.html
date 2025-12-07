@@ -51,6 +51,19 @@
                 <label>Color secundario (#HEX)</label>
                 <input type="text" name="secondary_color" placeholder="#A0B3FF">
             </div>
+            <div>
+                <label>Motor de IA</label>
+                <select name="ai_provider">
+                    {% for option in ai_provider_options %}
+                        <option value="{{ option.value }}">{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Modelo preferido</label>
+                <input type="text" name="ai_model" placeholder="{{ ai_model_default_hint }}">
+                <small class="muted">Este modelo se usará para parsear planes y sugerir objetivos en este colegio.</small>
+            </div>
             <div style="grid-column:1 / -1; margin-top:4px;">
                 <button class="btn btn-primary" type="submit">Crear colegio</button>
             </div>
@@ -152,6 +165,9 @@
                             <div class="muted" style="margin-top:4px;">
                                 Primario: {{ inst.primary_color or "—" }} · Secundario: {{ inst.secondary_color or "—" }}
                             </div>
+                            <div class="muted" style="margin-top:2px;">
+                                Motor IA: {{ inst.ai_provider or "Config. global" }} · Modelo: {{ inst.ai_model or ai_model_default_hint }}
+                            </div>
                         </div>
                         <form method="post" onsubmit="return confirm('¿Eliminar {{ inst.name }}? Esta acción no se puede deshacer.');">
                             <input type="hidden" name="action" value="delete_institution">
@@ -187,6 +203,20 @@
                                 <label>Color secundario (#HEX)</label>
                                 <input type="text" name="secondary_color" value="{{ inst.secondary_color or '' }}">
                             </div>
+                            <div>
+                                <label>Motor de IA</label>
+                                <select name="ai_provider">
+                                    {% set current_provider = inst.ai_provider or '' %}
+                                    {% for option in ai_provider_options %}
+                                        <option value="{{ option.value }}" {% if option.value == current_provider %}selected{% endif %}>{{ option.label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label>Modelo preferido</label>
+                                <input type="text" name="ai_model" value="{{ inst.ai_model or '' }}" placeholder="{{ ai_model_default_hint }}">
+                                <small class="muted">Si queda vacío se usará {{ ai_model_default_hint }} o el valor global.</small>
+                            </div>
                             <div style="grid-column:1 / -1;">
                                 <button class="btn btn-secondary" type="submit">Guardar cambios</button>
                             </div>
@@ -208,5 +238,113 @@
     {% else %}
         <p class="muted">Aún no cargaste colegios en la plataforma.</p>
     {% endif %}
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Prompt de IA para planes</h3>
+    <form method="post" style="display:flex; flex-direction:column; gap:10px;">
+        <input type="hidden" name="action" value="update_curriculum_prompt">
+        <textarea name="curriculum_prompt_text" rows="6" placeholder="Escribe las instrucciones para el parser IA.">{{ curriculum_prompt.prompt_text if curriculum_prompt else '' }}</textarea>
+        <small class="muted">Este prompt se usa para leer cualquier PDF/TXT de planes y extraer grados, materias y objetivos. Puedes personalizarlo sin tocar el código.</small>
+        <button class="btn btn-primary" type="submit">Guardar prompt</button>
+    </form>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Alias de grados reconocidos</h3>
+    <p class="muted">Agrega variaciones de nombres de grado (ej. “1° básico”, “grade 4”) y a qué número normalizado corresponden.</p>
+    <div style="overflow-x:auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Alias</th>
+                    <th>Normalizado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for alias in grade_aliases %}
+                    <tr>
+                        <td>{{ alias.alias }}</td>
+                        <td>{{ alias.normalized_value }}</td>
+                        <td>
+                            <form method="post" style="display:inline;">
+                                <input type="hidden" name="action" value="delete_grade_alias">
+                                <input type="hidden" name="grade_alias_id" value="{{ alias.id }}">
+                                <button class="btn btn-link" type="submit">Quitar</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="3" class="muted">Aún no hay alias configurados.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:12px;">
+        <input type="hidden" name="action" value="add_grade_alias">
+        <div>
+            <label>Alias</label>
+            <input type="text" name="grade_alias" placeholder="Ej: 1° básico" required>
+        </div>
+        <div>
+            <label>Valor normalizado</label>
+            <input type="text" name="grade_normalized_value" placeholder="1" required>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-secondary" type="submit">Agregar alias</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Materias / áreas detectadas</h3>
+    <p class="muted">Define etiquetas y expresiones regulares para identificar materias dentro de los PDFs. Se combinan con las entradas por colegio si las hubiera.</p>
+    <div style="overflow-x:auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Materia</th>
+                    <th>Patrón</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for keyword in area_keywords %}
+                    <tr>
+                        <td>{{ keyword.label }}</td>
+                        <td><code>{{ keyword.pattern }}</code></td>
+                        <td>
+                            <form method="post" style="display:inline;">
+                                <input type="hidden" name="action" value="delete_area_keyword">
+                                <input type="hidden" name="area_keyword_id" value="{{ keyword.id }}">
+                                <button class="btn btn-link" type="submit">Quitar</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="3" class="muted">No hay áreas configuradas.</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:12px;">
+        <input type="hidden" name="action" value="add_area_keyword">
+        <div>
+            <label>Materia / área</label>
+            <input type="text" name="area_label" placeholder="Ej: Física" required>
+        </div>
+        <div>
+            <label>Patrón (regex)</label>
+            <input type="text" name="area_pattern" placeholder="Ej: f[ií]sica" required>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-secondary" type="submit">Agregar área</button>
+        </div>
+    </form>
 </div>
 {% endblock %}

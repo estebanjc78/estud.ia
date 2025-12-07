@@ -375,6 +375,48 @@
             margin-bottom: 6px;
         }
 
+        .flash-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .flash {
+            border-radius: 14px;
+            padding: 12px 16px;
+            border: 1px solid var(--brand-border);
+            background: #ffffff;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .flash-success {
+            border-color: #22c55e66;
+            background: #ecfdf5;
+        }
+
+        .flash-error {
+            border-color: #f8717166;
+            background: #fef2f2;
+        }
+
+        .flash-info {
+            border-color: #38bdf866;
+            background: #eff6ff;
+        }
+
+        .flash button {
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            color: #475569;
+            font-size: 0.9rem;
+        }
+
         @media (max-width: 960px) {
             header {
                 padding: 14px 18px;
@@ -549,6 +591,20 @@
     </aside>
 
     <main class="content">
+        {% with messages = get_flashed_messages(with_categories=True) %}
+            {% if messages %}
+                <div class="flash-stack">
+                    {% for category, message in messages %}
+                        {% set category_class = 'flash-' + category if category in ['success', 'error', 'info'] else 'flash-info' %}
+                        <div class="flash {{ category_class }}">
+                            <div>{{ message }}</div>
+                            <button type="button" onclick="this.parentElement.remove();">×</button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
         {% block content_header %}{% endblock %}
 
         {% block content %}

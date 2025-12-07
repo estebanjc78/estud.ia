@@ -259,7 +259,7 @@ def admin_delete_user(user_id):
 
 @admin_bp.route("/estructura", methods=["GET", "POST"])
 @login_required
-@require_roles("ADMIN_COLEGIO")
+@require_roles("ADMIN_COLEGIO", "ADMIN")
 def admin_structure():
     profile = get_current_profile()
     institutions = _institutions_for_profile(profile)
@@ -282,11 +282,18 @@ def admin_structure():
     if not selected_institution and institutions:
         selected_institution = institutions[0]
 
+    allow_ai_config = bool(profile and profile.role and profile.role.name == "ADMIN")
     can_create_institution = bool(
         profile
         and profile.role
         and (profile.role.name == "ADMIN" or not institutions)
     )
+    ai_provider_options = [
+        {"value": "", "label": "Config. global (según entorno)"},
+        {"value": "openai", "label": "OpenAI (usa API global)"},
+        {"value": "heuristic", "label": "Heurístico local"},
+    ]
+    ai_model_default_hint = os.getenv("AI_MODEL") or "gpt-4o-mini"
 
     if request.method == "POST":
         action = request.form.get("action")
@@ -300,6 +307,14 @@ def admin_structure():
             primary_color = request.form.get("primary_color")
             secondary_color = request.form.get("secondary_color")
             logo_url = (request.form.get("logo_url") or "").strip() or None
+            ai_provider = None
+            ai_model = None
+            if allow_ai_config:
+                ai_provider = (request.form.get("ai_provider") or "").strip().lower() or None
+                ai_model = (request.form.get("ai_model") or "").strip() or None
+                if ai_provider and ai_provider not in {"openai", "heuristic"}:
+                    flash("Proveedor de IA inválido.", "error")
+                    return redirect(url_for("admin.admin_structure"))
 
             if not name:
                 flash("El nombre del colegio es obligatorio.", "error")
@@ -315,13 +330,14 @@ def admin_structure():
             except ValueError as exc:
                 flash(str(exc), "error")
                 return redirect(url_for("admin.admin_structure"))
-
             institution = Institution(
                 name=name,
                 short_code=short_code,
                 primary_color=normalized_primary,
                 secondary_color=normalized_secondary,
                 logo_url=logo_url,
+                ai_provider=ai_provider if allow_ai_config else None,
+                ai_model=ai_model or None if allow_ai_config else None,
             )
             db.session.add(institution)
             db.session.commit()
@@ -424,6 +440,9 @@ def admin_structure():
         selected_institution=selected_institution,
         grades=grades,
         can_create_institution=can_create_institution,
+        ai_provider_options=ai_provider_options,
+        ai_model_default_hint=ai_model_default_hint,
+        allow_ai_config=allow_ai_config,
         profile=profile,
         is_admin=True,
     )

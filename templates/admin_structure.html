@@ -38,6 +38,26 @@
             <label>Color secundario (#HEX)</label>
             <input type="text" name="secondary_color" value="#9AB3FF">
         </div>
+        {% if allow_ai_config %}
+            <div>
+                <label>Proveedor de IA</label>
+                <select name="ai_provider">
+                    {% for option in ai_provider_options %}
+                        <option value="{{ option.value }}">{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+                <small class="muted">Define si el colegio usa OpenAI, heurístico interno o la configuración global.</small>
+            </div>
+            <div>
+                <label>Modelo de IA</label>
+                <input type="text" name="ai_model" placeholder="{{ ai_model_default_hint }}">
+                <small class="muted">Opcional. Si se deja vacío, se usará el modelo global.</small>
+            </div>
+        {% else %}
+            <div style="grid-column:1 / -1;">
+                <small class="muted">El motor de IA se define desde la consola del dueño de la plataforma.</small>
+            </div>
+        {% endif %}
         <div style="grid-column:1 / -1;">
             <button class="btn btn-primary" type="submit">Crear institución</button>
         </div>

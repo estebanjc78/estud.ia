@@ -16,6 +16,11 @@ from .task_submission import (
 from .insight_report import InsightReport, ReportScope
 from .help_usage import TaskHelpUsage
 from .curriculum import CurriculumDocument, CurriculumSegment
+from .curriculum_config import (
+    CurriculumPrompt,
+    CurriculumGradeAlias,
+    CurriculumAreaKeyword,
+)
 from .platform_theme import PlatformTheme
 
 __all__ = [
@@ -44,4 +49,7 @@ __all__ = [
     "CurriculumDocument",
     "CurriculumSegment",
     "PlatformTheme",
+    "CurriculumPrompt",
+    "CurriculumGradeAlias",
+    "CurriculumAreaKeyword",
 ]

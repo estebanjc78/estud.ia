@@ -90,17 +90,25 @@ def run_migrations_online():
                 directives[:] = []
                 logger.info('No changes in schema detected.')
 
-    conf_args = current_app.extensions['migrate'].configure_args
+    migrate_ext = current_app.extensions['migrate']
+    conf_args = migrate_ext.configure_args
+    if conf_args is None:
+        conf_args = {}
+        migrate_ext.configure_args = conf_args
     if conf_args.get("process_revision_directives") is None:
         conf_args["process_revision_directives"] = process_revision_directives
 
     connectable = get_engine()
 
     with connectable.connect() as connection:
+        configure_kwargs = dict(conf_args)
+        if configure_kwargs.get("render_as_batch") is None and connection.engine.dialect.name == "sqlite":
+            configure_kwargs["render_as_batch"] = True
+
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
-            **conf_args
+            **configure_kwargs
         )
 
         with context.begin_transaction():

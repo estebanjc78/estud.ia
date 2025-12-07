@@ -1,5 +1,7 @@
 # app.py
+import json
 import os
+import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -27,6 +29,7 @@ from services import (
     AIInsightsService,
     HelpUsageService,
     CurriculumService,
+    AIClient,
     save_logo,
 )
 from sqlalchemy.exc import OperationalError
@@ -684,12 +687,30 @@ def owner_institutions():
     if not profile:
         abort(403)
 
-    from models import Institution, Profile as ProfileModel, RoleEnum, User, PlatformTheme
+    from models import (
+        Institution,
+        Profile as ProfileModel,
+        RoleEnum,
+        User,
+        PlatformTheme,
+        CurriculumPrompt,
+        CurriculumGradeAlias,
+        CurriculumAreaKeyword,
+    )
     from api.institution import _normalize_hex_color
 
     owner_role = getattr(RoleEnum, "ADMIN", None)
     if not owner_role or profile.role != owner_role:
         abort(403)
+    is_owner = True
+
+    ai_provider_options = [
+        {"value": "", "label": "Config. global (según entorno)"},
+        {"value": "openai", "label": "OpenAI"},
+        {"value": "heuristic", "label": "Heurístico interno"},
+    ]
+    valid_ai_providers = {option["value"] for option in ai_provider_options if option["value"]}
+    ai_model_default_hint = os.getenv("AI_MODEL") or "gpt-4o-mini"
 
     if request.method == "POST":
         action = request.form.get("action")
@@ -699,6 +720,8 @@ def owner_institutions():
             primary_color = request.form.get("primary_color")
             secondary_color = request.form.get("secondary_color")
             logo_file = request.files.get("logo_file")
+            ai_provider = (request.form.get("ai_provider") or "").strip().lower() or None
+            ai_model = (request.form.get("ai_model") or "").strip() or None
 
             if not name:
                 flash("El nombre del colegio es obligatorio.", "error")
@@ -706,6 +729,10 @@ def owner_institutions():
 
             if short_code and Institution.query.filter_by(short_code=short_code).first():
                 flash("Ya existe una institución con ese código.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            if ai_provider and ai_provider not in valid_ai_providers:
+                flash("Proveedor de IA inválido.", "error")
                 return redirect(url_for("owner_institutions"))
 
             try:
@@ -721,6 +748,8 @@ def owner_institutions():
                 primary_color=normalized_primary,
                 secondary_color=normalized_secondary,
                 logo_url=save_logo(logo_file),
+                ai_provider=ai_provider,
+                ai_model=ai_model or None,
             )
             db.session.add(institution)
             db.session.commit()
@@ -739,6 +768,8 @@ def owner_institutions():
             primary_color = request.form.get("primary_color")
             secondary_color = request.form.get("secondary_color")
             logo_file = request.files.get("logo_file")
+            ai_provider = (request.form.get("ai_provider") or "").strip().lower() or None
+            ai_model = (request.form.get("ai_model") or "").strip() or None
 
             if not name:
                 flash("El nombre del colegio es obligatorio.", "error")
@@ -748,6 +779,10 @@ def owner_institutions():
                 if Institution.query.filter_by(short_code=short_code).first():
                     flash("Ya existe una institución con ese código.", "error")
                     return redirect(url_for("owner_institutions"))
+
+            if ai_provider and ai_provider not in valid_ai_providers:
+                flash("Proveedor de IA inválido.", "error")
+                return redirect(url_for("owner_institutions"))
 
             try:
                 normalized_primary = _normalize_hex_color(primary_color) or institution.primary_color
@@ -762,6 +797,8 @@ def owner_institutions():
             institution.logo_url = saved_logo or institution.logo_url
             institution.primary_color = normalized_primary
             institution.secondary_color = normalized_secondary
+            institution.ai_provider = ai_provider
+            institution.ai_model = ai_model or None
             db.session.commit()
             flash("Institución actualizada.", "success")
             return redirect(url_for("owner_institutions"))
@@ -832,6 +869,90 @@ def owner_institutions():
             flash("Administrador del colegio creado.", "success")
             return redirect(url_for("owner_institutions"))
 
+        if action == "update_curriculum_prompt":
+            prompt_text = (request.form.get("curriculum_prompt_text") or "").strip()
+            if not prompt_text:
+                flash("El prompt no puede estar vacío.", "error")
+                return redirect(url_for("owner_institutions"))
+
+            prompt = (
+                CurriculumPrompt.query.filter_by(
+                    institution_id=None,
+                    context=CurriculumService.PROMPT_CONTEXT,
+                ).first()
+            )
+            if not prompt:
+                prompt = CurriculumPrompt(
+                    institution_id=None,
+                    context=CurriculumService.PROMPT_CONTEXT,
+                    prompt_text=prompt_text,
+                )
+                db.session.add(prompt)
+            else:
+                prompt.prompt_text = prompt_text
+            db.session.commit()
+            CurriculumService.clear_caches()
+            flash("Prompt curricular actualizado.", "success")
+            return redirect(url_for("owner_institutions"))
+
+        if action == "add_grade_alias":
+            alias = (request.form.get("grade_alias") or "").strip().lower()
+            normalized_value = (request.form.get("grade_normalized_value") or "").strip()
+            if not alias or not normalized_value:
+                flash("Alias y valor normalizado son obligatorios.", "error")
+                return redirect(url_for("owner_institutions"))
+            entry = CurriculumGradeAlias(
+                institution_id=None,
+                alias=alias,
+                normalized_value=normalized_value,
+            )
+            db.session.add(entry)
+            db.session.commit()
+            CurriculumService.clear_caches()
+            flash("Alias de grado agregado.", "success")
+            return redirect(url_for("owner_institutions"))
+
+        if action == "delete_grade_alias":
+            alias_id = request.form.get("grade_alias_id")
+            entry = CurriculumGradeAlias.query.get(alias_id)
+            if entry and entry.institution_id is None:
+                db.session.delete(entry)
+                db.session.commit()
+                CurriculumService.clear_caches()
+                flash("Alias de grado eliminado.", "success")
+            else:
+                flash("No encontramos ese alias.", "error")
+            return redirect(url_for("owner_institutions"))
+
+        if action == "add_area_keyword":
+            label = (request.form.get("area_label") or "").strip()
+            pattern = (request.form.get("area_pattern") or "").strip()
+            if not label or not pattern:
+                flash("Materia y patrón son obligatorios.", "error")
+                return redirect(url_for("owner_institutions"))
+            entry = CurriculumAreaKeyword(
+                institution_id=None,
+                label=label,
+                pattern=pattern,
+            )
+            db.session.add(entry)
+            db.session.commit()
+            CurriculumService.clear_caches()
+            flash("Área agregada.", "success")
+            return redirect(url_for("owner_institutions"))
+
+        if action == "delete_area_keyword":
+            keyword_id = request.form.get("area_keyword_id")
+            entry = CurriculumAreaKeyword.query.get(keyword_id)
+            if entry and entry.institution_id is None:
+                db.session.delete(entry)
+                db.session.commit()
+                CurriculumService.clear_caches()
+                flash("Área eliminada.", "success")
+            else:
+                flash("No encontramos esa área.", "error")
+            return redirect(url_for("owner_institutions"))
+
         flash("Acción inválida.", "error")
         return redirect(url_for("owner_institutions"))
 
@@ -851,12 +972,36 @@ def owner_institutions():
         for admin in admin_profiles:
             admins_by_institution.setdefault(admin.institution_id, []).append(admin)
 
+    curriculum_prompt = (
+        CurriculumPrompt.query.filter_by(
+            institution_id=None,
+            context=CurriculumService.PROMPT_CONTEXT,
+        )
+        .order_by(CurriculumPrompt.updated_at.desc().nullslast())
+        .first()
+    )
+    grade_aliases = (
+        CurriculumGradeAlias.query.filter_by(institution_id=None)
+        .order_by(CurriculumGradeAlias.normalized_value.asc(), CurriculumGradeAlias.alias.asc())
+        .all()
+    )
+    area_keywords = (
+        CurriculumAreaKeyword.query.filter_by(institution_id=None)
+        .order_by(CurriculumAreaKeyword.label.asc())
+        .all()
+    )
+
     return render_template(
         "owner_institutions.html",
         institutions=institutions,
         admins_by_institution=admins_by_institution,
         platform_theme=PlatformTheme.current(),
         is_admin=True,
+        ai_provider_options=ai_provider_options,
+        ai_model_default_hint=ai_model_default_hint,
+        curriculum_prompt=curriculum_prompt,
+        grade_aliases=grade_aliases,
+        area_keywords=area_keywords,
     )
 
 
@@ -873,21 +1018,15 @@ def plan_view():
     if not profile:
         abort(403)
 
-    from models import (
-        StudyPlan,
-        Objective,
-        Lesson,
-        Grade,
-        Section,
-        RoleEnum,
-        CurriculumDocument,
-    )
+    from models import StudyPlan, Objective, Grade, RoleEnum, CurriculumDocument
 
-    editable_roles = (
-        RoleEnum.PROFESOR,
-        getattr(RoleEnum, "ADMIN_COLEGIO", RoleEnum.PROFESOR),
-        getattr(RoleEnum, "RECTOR", RoleEnum.PROFESOR),
-    )
+    editable_roles = {
+        getattr(RoleEnum, "PROFESOR", None),
+        getattr(RoleEnum, "ADMIN_COLEGIO", None),
+        getattr(RoleEnum, "RECTOR", None),
+        getattr(RoleEnum, "ADMIN", None),
+    }
+    editable_roles.discard(None)
     can_edit = profile.role in editable_roles
 
     grades = (
@@ -895,97 +1034,25 @@ def plan_view():
         .order_by(Grade.name.asc())
         .all()
     )
-    sections = (
-        Section.query.join(Grade)
-        .filter(Grade.institution_id == profile.institution_id)
-        .order_by(Section.name.asc())
-        .all()
-    )
-
-    curriculum_documents = (
-        CurriculumService.documents_for_institution(profile.institution_id)
-        if can_edit
-        else []
-    )
 
     if request.method == "POST" and can_edit:
         action = request.form.get("action")
-        if action == "upload_curriculum":
-            file = request.files.get("curriculum_file")
-            title = (request.form.get("curriculum_title") or (file.filename if file else "")).strip()
-            jurisdiction = (request.form.get("curriculum_jurisdiction") or "").strip()
-            year_raw = request.form.get("curriculum_year")
-            grade_min = CurriculumService.normalize_grade_label(request.form.get("curriculum_grade_min"))
-            grade_max = CurriculumService.normalize_grade_label(request.form.get("curriculum_grade_max"))
-            if not file or not file.filename:
-                flash("Selecciona un archivo PDF o TXT.", "error")
-                return redirect(url_for("plan_view"))
-            try:
-                year_val = int(year_raw) if year_raw else None
-            except ValueError:
-                year_val = None
-            try:
-                CurriculumService.ingest_from_file(
-                    profile=profile,
-                    file_storage=file,
-                    title=title or "Currículum",
-                    jurisdiction=jurisdiction,
-                    year=year_val,
-                    grade_min=grade_min,
-                    grade_max=grade_max,
-                )
-                flash("Currículum cargado. Estamos procesando el archivo.", "success")
-            except Exception as exc:
-                flash(f"No pudimos cargar el archivo: {exc}", "error")
-            return redirect(url_for("plan_view"))
-
-        if action == "paste_curriculum":
-            raw_text = (request.form.get("curriculum_text") or "").strip()
-            title = (request.form.get("curriculum_title") or "Currículum pegado").strip()
-            jurisdiction = (request.form.get("curriculum_jurisdiction") or "").strip()
-            year_raw = request.form.get("curriculum_year")
-            grade_min = CurriculumService.normalize_grade_label(request.form.get("curriculum_grade_min"))
-            grade_max = CurriculumService.normalize_grade_label(request.form.get("curriculum_grade_max"))
-            if not raw_text:
-                flash("Pegá al menos un capítulo del plan oficial.", "error")
-                return redirect(url_for("plan_view"))
-            try:
-                year_val = int(year_raw) if year_raw else None
-            except ValueError:
-                year_val = None
-            CurriculumService.ingest_from_text(
-                profile=profile,
-                title=title,
-                raw_text=raw_text,
-                jurisdiction=jurisdiction,
-                year=year_val,
-                grade_min=grade_min,
-                grade_max=grade_max,
-            )
-            flash("Texto curricular guardado y procesado.", "success")
-            return redirect(url_for("plan_view"))
-
         if action == "create_plan":
-            grade_id = request.form.get("grade_id")
             name = (request.form.get("plan_name") or "").strip()
             description = (request.form.get("plan_description") or "").strip()
             year_raw = request.form.get("plan_year")
-            curriculum_doc_id = request.form.get("curriculum_document_id")
-            use_curriculum_ai = request.form.get("curriculum_use_ai") == "on"
-            auto_objectives = request.form.get("curriculum_create_objectives") == "on"
+            jurisdiction = (request.form.get("plan_jurisdiction") or "").strip()
+            plan_text = (request.form.get("plan_text") or "").strip()
+            plan_file = request.files.get("plan_file")
 
-            try:
-                grade_id_int = int(grade_id)
-            except (TypeError, ValueError):
-                grade_id_int = None
+            if not name:
+                flash("Completa el nombre del plan.", "error")
+                return redirect(url_for("plan_view"))
 
-            grade = (
-                Grade.query.filter_by(id=grade_id_int, institution_id=profile.institution_id).first()
-                if grade_id_int
-                else None
-            )
-            if not grade or not name:
-                flash("Selecciona un grado y completa el nombre del plan.", "error")
+            has_file = bool(plan_file and plan_file.filename)
+            has_text = bool(plan_text)
+            if not (has_file or has_text):
+                flash("Subí el documento oficial (PDF/TXT) o pegá el texto completo antes de guardar el plan.", "error")
                 return redirect(url_for("plan_view"))
 
             try:
@@ -995,49 +1062,157 @@ def plan_view():
 
             plan = StudyPlan(
                 institution_id=profile.institution_id,
-                grade_id=grade.id,
                 name=name,
                 year=year_val,
                 description=description,
+                jurisdiction=jurisdiction or None,
                 is_active=True,
             )
             db.session.add(plan)
-            db.session.flush()
-
-            if curriculum_doc_id and (use_curriculum_ai or auto_objectives):
-                document = CurriculumDocument.query.get(curriculum_doc_id)
-                if document and (
-                    document.institution_id is None or document.institution_id == profile.institution_id
-                ):
-                    grade_label = CurriculumService.normalize_grade_label(grade.name)
-                    segments = CurriculumService.segments_for_grade(
-                        documents=[document],
-                        grade_label=grade_label,
-                        limit_per_doc=6,
-                    ) if grade_label else []
-                    if segments:
-                        enrichment = CurriculumService.build_plan_enrichment(
-                            plan=plan,
-                            grade=grade,
-                            segments=segments,
-                            include_objectives=auto_objectives,
-                        )
-                        if use_curriculum_ai and enrichment.get("description"):
-                            if plan.description:
-                                plan.description = f"{plan.description}\n\n{enrichment['description']}"
-                            else:
-                                plan.description = enrichment["description"]
-                        if auto_objectives and enrichment.get("objectives"):
-                            for obj_data in enrichment["objectives"]:
-                                obj = Objective(
-                                    study_plan_id=plan.id,
-                                    title=obj_data.get("title")[:255],
-                                    description=obj_data.get("description"),
-                                )
-                                db.session.add(obj)
-
             db.session.commit()
+
+            file_uploaded = False
+            text_uploaded = False
+            if has_file:
+                try:
+                    document = CurriculumService.ingest_from_file(
+                        profile=profile,
+                        file_storage=plan_file,
+                        title=plan.name,
+                        jurisdiction=plan.jurisdiction,
+                        year=plan.year,
+                    )
+                    plan.curriculum_document_id = document.id
+                    file_uploaded = True
+                except Exception as exc:
+                    flash(f"No pudimos procesar el archivo: {exc}", "error")
+
+            if has_text:
+                try:
+                    document = CurriculumService.ingest_from_text(
+                        profile=profile,
+                        title=plan.name,
+                        raw_text=plan_text,
+                        jurisdiction=plan.jurisdiction,
+                        year=plan.year,
+                    )
+                    plan.curriculum_document_id = document.id
+                    text_uploaded = True
+                except Exception as exc:
+                    flash(f"No pudimos guardar el texto: {exc}", "error")
+
+            if plan.curriculum_document_id:
+                db.session.commit()
+
             flash("Plan creado correctamente.", "success")
+            if file_uploaded:
+                flash("Archivo cargado y en procesamiento.", "success")
+            if text_uploaded:
+                flash("Texto curricular guardado.", "success")
+            return redirect(url_for("plan_view"))
+
+        if action == "update_plan_document":
+            target_plan_id = request.form.get("target_plan_id")
+            if not target_plan_id:
+                flash("Selecciona un plan para vincular el documento.", "error")
+                return redirect(url_for("plan_view"))
+
+            plan = StudyPlan.query.get(target_plan_id)
+            if not plan or plan.institution_id != profile.institution_id:
+                flash("Plan inválido.", "error")
+                return redirect(url_for("plan_view"))
+
+            link_file = request.files.get("link_plan_file")
+            link_text = (request.form.get("link_plan_text") or "").strip()
+
+            if not ((link_file and link_file.filename) or link_text):
+                flash("Subí un archivo o pegá texto para vincular el plan.", "error")
+                return redirect(url_for("plan_view"))
+
+            linked = False
+            if plan.curriculum_document:
+                CurriculumService.delete_document(plan.curriculum_document)
+                plan.curriculum_document_id = None
+            if link_file and link_file.filename:
+                try:
+                    document = CurriculumService.ingest_from_file(
+                        profile=profile,
+                        file_storage=link_file,
+                        title=plan.name,
+                        jurisdiction=plan.jurisdiction,
+                        year=plan.year,
+                    )
+                    plan.curriculum_document_id = document.id
+                    linked = True
+                except Exception as exc:
+                    flash(f"No pudimos procesar el archivo: {exc}", "error")
+                    return redirect(url_for("plan_view"))
+
+            if link_text:
+                try:
+                    document = CurriculumService.ingest_from_text(
+                        profile=profile,
+                        title=plan.name,
+                        raw_text=link_text,
+                        jurisdiction=plan.jurisdiction,
+                        year=plan.year,
+                    )
+                    plan.curriculum_document_id = document.id
+                    linked = True
+                except Exception as exc:
+                    flash(f"No pudimos guardar el texto: {exc}", "error")
+                    return redirect(url_for("plan_view"))
+
+            if linked:
+                db.session.commit()
+                flash("Documento vinculado al plan.", "success")
+            else:
+                flash("No pudimos vincular el documento.", "error")
+            return redirect(url_for("plan_view"))
+
+        if action == "delete_plan":
+            plan_id = request.form.get("plan_id")
+            confirm_name = (request.form.get("confirm_plan_name") or "").strip()
+            confirm_checkbox = request.form.get("confirm_plan_checkbox") == "on"
+
+            plan = StudyPlan.query.get(plan_id)
+            if not plan or plan.institution_id != profile.institution_id:
+                flash("No encontramos el plan seleccionado.", "error")
+                return redirect(url_for("plan_view"))
+
+            if confirm_name != plan.name or not confirm_checkbox:
+                flash("Escribe el nombre exacto del plan y marca la casilla para eliminarlo.", "error")
+                return redirect(url_for("plan_view"))
+
+            document = plan.curriculum_document
+            db.session.delete(plan)
+            if document:
+                CurriculumService.delete_document(document)
+            db.session.commit()
+            flash(f"Plan «{plan.name}» eliminado.", "success")
+            return redirect(url_for("plan_view"))
+
+        if action == "delete_objective":
+            objective_id = request.form.get("objective_id")
+            confirm_title = (request.form.get("confirm_objective_title") or "").strip()
+            confirm_checkbox = request.form.get("confirm_objective_checkbox") == "on"
+
+            objective = Objective.query.get(objective_id)
+            if (
+                not objective
+                or not objective.study_plan
+                or objective.study_plan.institution_id != profile.institution_id
+            ):
+                flash("No encontramos el objetivo seleccionado.", "error")
+                return redirect(url_for("plan_view"))
+
+            if confirm_title != objective.title or not confirm_checkbox:
+                flash("Escribe el título exacto del objetivo y marca la casilla para eliminarlo.", "error")
+                return redirect(url_for("plan_view"))
+
+            db.session.delete(objective)
+            db.session.commit()
+            flash(f"Objetivo «{objective.title}» eliminado.", "success")
             return redirect(url_for("plan_view"))
 
         if action == "create_objective":
@@ -1048,10 +1223,27 @@ def plan_view():
             start_date = _safe_parse_date(request.form.get("objective_start"))
             end_date = _safe_parse_date(request.form.get("objective_end"))
             order_raw = request.form.get("objective_order")
+            grade_id_raw = request.form.get("objective_grade_id")
+            subject_label = (request.form.get("objective_subject") or "").strip()
+            class_ideas = (request.form.get("objective_class_ideas") or "").strip()
 
             plan = StudyPlan.query.get(plan_id)
             if not plan or plan.institution_id != profile.institution_id or not title:
                 flash("Selecciona un plan válido y completa el título del objetivo.", "error")
+                return redirect(url_for("plan_view"))
+
+            try:
+                grade_id = int(grade_id_raw)
+            except (TypeError, ValueError):
+                grade_id = None
+
+            grade = (
+                Grade.query.filter_by(id=grade_id, institution_id=profile.institution_id).first()
+                if grade_id
+                else None
+            )
+            if not grade:
+                flash("Selecciona el grado para calendarizar el objetivo.", "error")
                 return redirect(url_for("plan_view"))
 
             try:
@@ -1061,8 +1253,11 @@ def plan_view():
 
             objective = Objective(
                 study_plan_id=plan.id,
+                grade_id=grade.id,
                 title=title,
                 description=description,
+                subject_label=subject_label or None,
+                class_ideas=class_ideas or None,
                 period_label=period_label or None,
                 start_date=start_date,
                 end_date=end_date,
@@ -1071,47 +1266,6 @@ def plan_view():
             db.session.add(objective)
             db.session.commit()
             flash("Objetivo agregado correctamente.", "success")
-            return redirect(url_for("plan_view"))
-
-        if action == "create_lesson":
-            objective_id = request.form.get("objective_id")
-            lesson_title = (request.form.get("lesson_title") or "").strip()
-            lesson_description = (request.form.get("lesson_description") or "").strip()
-            class_date = _safe_parse_date(request.form.get("lesson_date"))
-            start_time = _safe_parse_time(request.form.get("lesson_start_time"))
-            end_time = _safe_parse_time(request.form.get("lesson_end_time"))
-            section_id = request.form.get("section_id")
-
-            objective = Objective.query.get(objective_id)
-            if (
-                not objective
-                or not objective.study_plan
-                or objective.study_plan.institution_id != profile.institution_id
-                or not lesson_title
-                or not class_date
-            ):
-                flash("Completa los datos obligatorios de la clase.", "error")
-                return redirect(url_for("plan_view"))
-
-            try:
-                section_id_int = int(section_id) if section_id else None
-            except ValueError:
-                section_id_int = None
-
-            lesson = Lesson(
-                institution_id=objective.study_plan.institution_id,
-                section_id=section_id_int,
-                teacher_profile_id=profile.id,
-                objective_id=objective.id,
-                title=lesson_title,
-                description=lesson_description,
-                class_date=class_date,
-                start_time=start_time,
-                end_time=end_time,
-            )
-            db.session.add(lesson)
-            db.session.commit()
-            flash("Clase programada correctamente.", "success")
             return redirect(url_for("plan_view"))
 
         flash("Acción no permitida.", "error")
@@ -1144,26 +1298,24 @@ def plan_view():
         period_list.sort(key=lambda p: p["label"])
 
         timeline = _build_plan_timeline(plan)
+        grade_labels = sorted({obj.grade.name for obj in plan.objectives if obj.grade})
 
-        plan_cards.append({"plan": plan, "periods": period_list, "timeline": timeline})
-
-    objective_choices = (
-        Objective.query.join(StudyPlan)
-        .filter(StudyPlan.institution_id == profile.institution_id)
-        .order_by(Objective.title.asc())
-        .all()
-    )
+        plan_cards.append(
+            {
+                "plan": plan,
+                "periods": period_list,
+                "timeline": timeline,
+                "grade_labels": grade_labels,
+            }
+        )
 
     return render_template(
         "plan.html",
         plans=plan_cards,
         plan_options=plans,
-        objective_choices=objective_choices,
         grades=grades,
-        sections=sections,
         can_edit=can_edit,
         is_admin=_has_admin_role(profile),
-        curriculum_documents=curriculum_documents,
     )
 
 
@@ -1224,6 +1376,236 @@ def _build_plan_timeline(plan):
         "total_days": total_days,
         "entries": entries,
     }
+
+
+@app.get("/plan/<int:plan_id>/grade/<int:grade_id>/segments")
+@login_required
+def plan_segments(plan_id: int, grade_id: int):
+    profile = _get_current_profile()
+    if not profile:
+        abort(403)
+
+    from models import StudyPlan, Grade, CurriculumDocument, Institution
+
+    plan = StudyPlan.query.get_or_404(plan_id)
+    if plan.institution_id != profile.institution_id:
+        abort(404)
+
+    grade = Grade.query.filter_by(id=grade_id, institution_id=profile.institution_id).first()
+    if not grade:
+        abort(404)
+
+    if not plan.curriculum_document_id:
+        return jsonify({"areas": [], "message": "Este plan todavía no tiene un documento curricular vinculado."}), 404
+
+    document = CurriculumDocument.query.get(plan.curriculum_document_id)
+    if not document:
+        return jsonify({"areas": [], "message": "No encontramos el documento vinculado a este plan."}), 404
+
+    normalized_grade = CurriculumService.normalize_grade_label(grade.name, plan.institution_id)
+
+    try:
+        segments = CurriculumService.segments_for_grade(
+            documents=[document],
+            grade_label=normalized_grade,
+            limit_per_doc=30,
+            fallback_to_general=True,
+        )
+    except Exception as exc:
+        current_app.logger.exception("No se pudieron obtener segmentos: %s", exc)
+        return jsonify({"areas": [], "message": "No pudimos leer el documento."}), 500
+
+    if not segments:
+        ai_areas = CurriculumService.ai_grade_suggestions(document=document, grade=grade)
+        if ai_areas:
+            return jsonify(
+                {
+                    "areas": ai_areas,
+                    "message": "Detectamos los temas usando IA, revisá los objetivos sugeridos antes de calendarizarlos.",
+                }
+            )
+        return jsonify({"areas": [], "message": "No encontramos segmentos para ese grado en el documento."}), 404
+
+    matched_specific = False
+    for seg in segments:
+        seg_label = (seg.grade_label or "").strip()
+        if normalized_grade and seg_label == normalized_grade:
+            matched_specific = True
+            break
+    used_general = not matched_specific
+
+    institution = Institution.query.get(plan.institution_id)
+    area_map: dict[str, list] = {}
+    for segment in segments:
+        area = segment.area or "Contenidos"
+        area_map.setdefault(area, []).append(segment)
+
+    payload = []
+    for area_name, area_segments in area_map.items():
+        suggestions = _ai_suggestions_from_segments(
+            institution=institution,
+            plan=plan,
+            grade=grade,
+            area_name=area_name,
+            segments=area_segments,
+        )
+        payload.append({"area": area_name, "suggestions": suggestions})
+
+    payload.sort(key=lambda item: item["area"].lower())
+    response_body = {"areas": payload}
+    if used_general:
+        if normalized_grade:
+            response_body["message"] = (
+                "No encontramos contenidos exclusivos para ese grado. Mostramos el plan general para que elijas el área."
+            )
+        else:
+            response_body["message"] = (
+                "El nombre del grado no indica curso específico, se muestra el plan general."
+            )
+    return jsonify(response_body)
+
+
+def _ai_suggestions_from_segments(*, institution, plan, grade, area_name: str, segments: list) -> list[dict]:
+    text_blocks: list[str] = []
+    for segment in segments:
+        text = (segment.content_text or "").strip()
+        if not text:
+            continue
+        text_blocks.append(text[:1600])
+        if len(text_blocks) >= 3:
+            break
+    if not text_blocks:
+        text_blocks.append("No se encontraron fragmentos específicos.")
+
+    client = AIClient(
+        provider_override=institution.ai_provider if institution else None,
+        model_override=institution.ai_model if institution else None,
+    )
+
+    prompt = (
+        "Actúas como coordinador pedagógico senior. A partir de los fragmentos siguientes, "
+        "propone objetivos claros para el grado y área indicados. Cada objetivo debe incluir: "
+        "título breve, descripción (qué se espera lograr) y una lista de 2-4 ideas de clases. "
+        "Devuelve únicamente JSON válido con el formato:\n"
+        "{ \"objectives\": [ { \"title\": \"...\", \"description\": \"...\", \"class_ideas\": [\"...\"] } ] }\n"
+        "No agregues texto fuera del JSON."
+    )
+    context = {
+        "plan": plan.name,
+        "year": plan.year,
+        "grade": grade.name,
+        "area": area_name,
+        "jurisdiction": plan.jurisdiction,
+        "segments": text_blocks,
+    }
+
+    suggestions = []
+    try:
+        ai_result = client.generate(prompt=prompt, context=context)
+        suggestions = _parse_ai_objectives(ai_result.get("text", ""))
+    except Exception as exc:
+        current_app.logger.warning("AI parser fallback (%s - %s): %s", plan.name, area_name, exc)
+
+    if not suggestions:
+        suggestions = _fallback_objectives(area_name, grade.name, text_blocks)
+
+    return suggestions[:5]
+
+
+def _parse_ai_objectives(raw_text: str) -> list[dict]:
+    if not raw_text:
+        return []
+    candidate = raw_text.strip()
+    if candidate.startswith("```"):
+        candidate = candidate.strip("`")
+        if "\n" in candidate:
+            candidate = candidate.split("\n", 1)[1]
+
+    json_candidate = _extract_json_candidate(candidate)
+    if not json_candidate:
+        return []
+
+    try:
+        data = json.loads(json_candidate)
+    except json.JSONDecodeError:
+        return []
+
+    if isinstance(data, dict):
+        objectives = data.get("objectives") or data.get("Objetivos") or data.get("items") or []
+    elif isinstance(data, list):
+        objectives = data
+    else:
+        objectives = []
+
+    cleaned = []
+    for entry in objectives:
+        if not isinstance(entry, dict):
+            continue
+        title = (entry.get("title") or entry.get("titulo") or entry.get("name") or "").strip()
+        description = (entry.get("description") or entry.get("descripcion") or "").strip()
+        class_ideas = entry.get("class_ideas") or entry.get("ideas") or entry.get("clases") or []
+        if isinstance(class_ideas, str):
+            class_ideas = [line.strip("•- ").strip() for line in class_ideas.split("\n") if line.strip()]
+        elif isinstance(class_ideas, list):
+            class_ideas = [str(item).strip() for item in class_ideas if str(item).strip()]
+        else:
+            class_ideas = []
+        if not title and not description:
+            continue
+        cleaned.append(
+            {
+                "title": title or "Objetivo sugerido",
+                "description": description or "Revisa el plan oficial para completar este objetivo.",
+                "class_ideas": class_ideas[:5] if class_ideas else [],
+            }
+        )
+    return cleaned
+
+
+def _extract_json_candidate(text: str) -> str | None:
+    start = text.find("{")
+    alt_start = text.find("[")
+    if alt_start != -1 and (start == -1 or alt_start < start):
+        start = alt_start
+    if start == -1:
+        return None
+    end_curly = text.rfind("}")
+    end_bracket = text.rfind("]")
+    end = max(end_curly, end_bracket)
+    if end == -1 or end <= start:
+        return None
+    return text[start : end + 1]
+
+
+def _fallback_objectives(area_name: str, grade_name: str, text_blocks: list[str]) -> list[dict]:
+    suggestions = []
+    for idx, block in enumerate(text_blocks[:3], start=1):
+        snippet = re.sub(r"\s+", " ", block).strip()
+        class_ideas = [
+            f"Exploración guiada de {area_name}",
+            f"Práctica colaborativa de {area_name}",
+            f"Cierre y evaluación de {area_name}",
+        ]
+        suggestions.append(
+            {
+                "title": f"{area_name} · Objetivo {idx}",
+                "description": snippet[:600] or f"Desarrollar contenidos de {area_name} en {grade_name}.",
+                "class_ideas": class_ideas,
+            }
+        )
+    if not suggestions:
+        suggestions.append(
+            {
+                "title": f"{area_name} · Objetivo general",
+                "description": f"Planificar contenidos de {area_name} para {grade_name} siguiendo el plan oficial.",
+                "class_ideas": [
+                    f"Presentación de los ejes de {area_name}",
+                    f"Actividad práctica guiada",
+                    f"Retroalimentación y cierre",
+                ],
+            }
+        )
+    return suggestions
 
 
 @app.get("/psico")
