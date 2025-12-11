@@ -505,7 +505,8 @@
                 <a href="{{ url_for('plan_view') }}">Plan de estudio</a>
             {% endif %}
             {% if is_teacher %}
-                <a href="{{ url_for('profe') }}">Clases</a>
+                <a href="{{ url_for('profe') }}">Panel docente</a>
+                <a href="{{ url_for('clases') }}">Planificación de clases</a>
                 <a href="{{ url_for('tareas') }}">Tareas</a>
             {% endif %}
             {% if is_teacher %}
@@ -549,7 +550,8 @@
                         <li><a href="{{ url_for('plan_view') }}">Plan de estudio</a></li>
                     {% endif %}
                     {% if is_teacher %}
-                        <li><a href="{{ url_for('profe') }}">Clases y actividades</a></li>
+                        <li><a href="{{ url_for('profe') }}">Panel docente</a></li>
+                        <li><a href="{{ url_for('clases') }}">Planificación de clases</a></li>
                         <li><a href="{{ url_for('tareas') }}">Tareas</a></li>
                         <li><a href="{{ bitacora_link }}">Bitácora</a></li>
                     {% endif %}

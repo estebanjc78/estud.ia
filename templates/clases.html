@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Planificación de clases{% endblock %}
+
+{% block content_header %}
+<div class="card" style="display:flex; flex-direction:column; gap:8px;">
+    <div class="pill">Agenda académica</div>
+    <h1 style="margin:0;">Planificación y registro de clases</h1>
+    <p class="muted" style="margin:0;">
+        Consultá las sesiones programadas y cargá nuevas clases con sección, objetivo y horarios definidos.
+    </p>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <a class="btn btn-primary" href="#classForm">Programar clase</a>
+        <a class="btn btn-secondary" href="{{ url_for('profe') }}">Volver al panel</a>
+        <a class="btn btn-secondary" href="{{ url_for('tareas') }}">Ver tareas</a>
+    </div>
+    <small class="muted">Este módulo reúne la planificación formal. Las tareas y bitácoras quedan en sus secciones específicas.</small>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(function() {
+    const aiBtn = document.getElementById("lesson_ai_button");
+    if (!aiBtn) {
+        return;
+    }
+    const descriptionField = document.getElementById("lesson_description_field");
+    const statusLabel = document.getElementById("lesson_ai_status");
+    const agendaBox = document.getElementById("lesson_ai_agenda");
+    const agendaList = document.getElementById("lesson_ai_agenda_list");
+    const titleInput = document.querySelector('input[name="lesson_title"]');
+    const objectiveSelect = document.querySelector('select[name="objective_id"]');
+    const sectionSelect = document.querySelector('select[name="section_id"]');
+
+    aiBtn.addEventListener("click", async () => {
+        statusLabel.textContent = "Consultando...";
+        aiBtn.disabled = true;
+        agendaBox.style.display = "none";
+        agendaList.innerHTML = "";
+        try {
+            const response = await fetch("/api/lessons/ai/brief", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    objective_id: objectiveSelect ? objectiveSelect.value || null : null,
+                    section_id: sectionSelect ? sectionSelect.value || null : null,
+                    title: titleInput ? titleInput.value : null,
+                }),
+            });
+            if (!response.ok) {
+                throw new Error("No pudimos obtener la sugerencia.");
+            }
+            const data = await response.json();
+            if (data.description && descriptionField) {
+                descriptionField.value = data.description;
+            }
+            if (Array.isArray(data.agenda) && data.agenda.length) {
+                data.agenda.forEach((item) => {
+                    const li = document.createElement("li");
+                    li.textContent = item;
+                    agendaList.appendChild(li);
+                });
+                agendaBox.style.display = "block";
+            }
+            statusLabel.textContent = "Texto sugerido listo para ajustar.";
+        } catch (error) {
+            console.error(error);
+            statusLabel.textContent = "No logramos generar la sugerencia.";
+        } finally {
+            aiBtn.disabled = false;
+        }
+    });
+})();
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div>
+            <h2 style="margin:0 0 4px;">Clases programadas</h2>
+            <p class="muted" style="margin:0;">Listado de las próximas sesiones que verán los alumnos en sus agendas.</p>
+        </div>
+        <span class="pill">{{ lessons|length }} clases en agenda</span>
+    </div>
+    {% if lessons %}
+        <table style="margin-top:12px;">
+            <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Horario</th>
+                <th>Título</th>
+                <th>Sección</th>
+                <th>Docente</th>
+                <th>Objetivo</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for lesson in lessons %}
+                <tr>
+                    <td>{{ lesson.class_date or "--" }}</td>
+                    <td>
+                        {% if lesson.start_time %}
+                            {{ lesson.start_time.strftime("%H:%M") }}
+                            {% if lesson.end_time %} – {{ lesson.end_time.strftime("%H:%M") }}{% endif %}
+                        {% else %}
+                            -- 
+                        {% endif %}
+                    </td>
+                    <td>{{ lesson.title }}</td>
+                    <td>
+                        {% if lesson.section %}
+                            {{ lesson.section.grade.name if lesson.section.grade else "" }} · {{ lesson.section.name }}
+                        {% else %}
+                            General
+                        {% endif %}
+                    </td>
+                    <td>{{ lesson.teacher_profile.full_name if lesson.teacher_profile else "Sin asignar" }}</td>
+                    <td>{{ lesson.objective.title if lesson.objective else "Sin objetivo" }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="muted" style="margin-top:12px;">Todavía no registraste clases. Creá la primera para empezar a calendarizar.</p>
+    {% endif %}
+</div>
+
+<div class="card" id="classForm">
+    <h2 style="margin-top:0;">Cargar nueva clase</h2>
+    <form method="post" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px;">
+        <div style="grid-column:1 / -1;">
+            <label>Título de la clase</label>
+            <input type="text" name="lesson_title" required placeholder="Ej: Ecosistemas · 5.º grado">
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Descripción / notas</label>
+            <textarea name="lesson_description" id="lesson_description_field" placeholder="Objetivo, dinámica o recursos a utilizar."></textarea>
+            <div style="display:flex; align-items:center; gap:10px; margin-top:6px; flex-wrap:wrap;">
+                <button class="btn btn-secondary" type="button" id="lesson_ai_button">Sugerir con IA</button>
+                <small class="muted" id="lesson_ai_status"></small>
+            </div>
+            <div id="lesson_ai_agenda" style="display:none; margin-top:10px; padding:12px; border:1px dashed var(--brand-border); border-radius:12px;">
+                <strong>Agenda sugerida</strong>
+                <ul id="lesson_ai_agenda_list" style="margin:6px 0 0 18px;"></ul>
+            </div>
+        </div>
+        <div>
+            <label>Fecha</label>
+            <input type="date" name="lesson_date" required>
+        </div>
+        <div>
+            <label>Inicio</label>
+            <input type="time" name="lesson_start_time">
+        </div>
+        <div>
+            <label>Fin</label>
+            <input type="time" name="lesson_end_time">
+        </div>
+        <div>
+            <label>Sección</label>
+            <select name="section_id">
+                <option value="">General</option>
+                {% for section in sections %}
+                    <option value="{{ section.id }}">
+                        {{ section.grade.name if section.grade else "Grado" }} · {{ section.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Objetivo (opcional)</label>
+            <select name="objective_id">
+                <option value="">Sin objetivo</option>
+                {% for obj in objectives %}
+                    <option value="{{ obj.id }}">
+                        {{ obj.study_plan.name if obj.study_plan else "Plan" }} · {{ obj.title }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if can_assign_teacher %}
+            <div>
+                <label>Docente responsable</label>
+                <select name="teacher_profile_id">
+                    <option value="">Selecciona</option>
+                    {% for teacher in teacher_choices %}
+                        <option value="{{ teacher.id }}">{{ teacher.full_name }}</option>
+                    {% endfor %}
+                </select>
+                <small class="muted">Si lo dejás vacío quedará como clase institucional.</small>
+            </div>
+        {% endif %}
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">Guardar clase</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

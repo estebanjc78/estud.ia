@@ -407,6 +407,12 @@ class CurriculumService:
                 raise RuntimeError("El PDF no contiene texto legible.")
             return content
         except Exception as exc:
+            message = str(exc)
+            if "cryptography" in message.lower():
+                raise RuntimeError(
+                    "No se pudo leer el PDF sin pdftotext: falta la dependencia 'cryptography'. "
+                    "Instala 'cryptography>=3.1' o ejecuta 'pip install pypdf[crypto]'."
+                ) from exc
             raise RuntimeError(f"No se pudo leer el PDF sin pdftotext: {exc}") from exc
 
     @staticmethod
@@ -475,6 +481,8 @@ class CurriculumService:
             normalized_line = CurriculumService._clean_heading_prefix(clean)
             if CurriculumService._looks_like_area_heading(normalized_line, institution_id):
                 area_name = CurriculumService._normalize_area_name(normalized_line, institution_id)
+                if not area_name:
+                    area_name = CurriculumService._fallback_area_label(normalized_line)
                 if area_name:
                     indices.append((idx, area_name))
         if not indices:
@@ -504,6 +512,15 @@ class CurriculumService:
             if re.search(pattern, text, re.IGNORECASE):
                 return label
         return None
+
+    @staticmethod
+    def _fallback_area_label(text: str) -> str | None:
+        stripped = text.strip().strip(":.-").strip()
+        stripped = re.sub(r"\s+", " ", stripped)
+        if len(stripped) < 3:
+            return None
+        # preserve original casing so admins can verify what heading was parsed
+        return stripped[:80]
 
     @staticmethod
     def _clean_heading_prefix(text: str) -> str:

@@ -25,6 +25,9 @@ class Task(db.Model):
     # Título y descripción de la tarea
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
+    help_text_low = db.Column(db.Text, nullable=True)
+    help_text_medium = db.Column(db.Text, nullable=True)
+    help_text_high = db.Column(db.Text, nullable=True)
 
     # Fecha de entrega
     due_date = db.Column(db.Date, nullable=True)

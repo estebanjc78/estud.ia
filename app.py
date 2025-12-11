@@ -5,6 +5,11 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - optional dependency
+    load_dotenv = None
+
 from flask import (
     Flask,
     render_template,
@@ -29,10 +34,16 @@ from services import (
     AIInsightsService,
     HelpUsageService,
     CurriculumService,
+    PlanParserService,
     AIClient,
     save_logo,
 )
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import joinedload
+
+BASE_DIR = Path(__file__).resolve().parent
+if load_dotenv:
+    load_dotenv(BASE_DIR / ".env", override=False)
 
 
 def create_app() -> Flask:
@@ -175,10 +186,14 @@ def profe():
         clases_hoy=data["clases_hoy"],
         resumen=resumen,
         lessons=data["lessons"],
+        lessons_upcoming=data["lessons_upcoming"],
         students=data["students"],
         tasks=data["tasks"],
+        tasks_upcoming=data["tasks_upcoming"],
         bitacora_entries=data["bitacora_entries"],
         recent_messages=data["recent_messages"],
+        metrics=data["metrics"],
+        alerts=data["alerts"],
         can_edit=can_edit,
         is_admin=_has_admin_role(profile),
         recipient_groups=_build_recipient_groups(profile),
@@ -291,6 +306,136 @@ def alumno_help_summary(task_id: int):
     return jsonify(summary)
 
 
+@app.route("/clases", methods=["GET", "POST"])
+@login_required
+def clases():
+    """
+    Módulo de clases: listado de sesiones y formulario rápido para programar nuevas.
+    """
+    profile = _get_current_profile()
+    if not profile:
+        abort(403)
+
+    from models import (
+        Lesson,
+        Section,
+        Grade,
+        Objective,
+        StudyPlan,
+        Profile as ProfileModel,
+        RoleEnum,
+    )
+
+    allowed_roles = (
+        RoleEnum.PROFESOR,
+        getattr(RoleEnum, "ADMIN_COLEGIO", None),
+        getattr(RoleEnum, "RECTOR", None),
+    )
+    if profile.role not in allowed_roles:
+        abort(403)
+
+    # Opciones para el formulario
+    sections = (
+        Section.query.options(joinedload(Section.grade))
+        .join(Grade)
+        .filter(Grade.institution_id == profile.institution_id)
+        .order_by(Grade.name.asc(), Section.name.asc())
+        .all()
+    )
+    objectives = (
+        Objective.query.options(joinedload(Objective.study_plan))
+        .join(StudyPlan)
+        .filter(StudyPlan.institution_id == profile.institution_id)
+        .order_by(StudyPlan.name.asc(), Objective.title.asc())
+        .limit(300)
+        .all()
+    )
+    teacher_choices = []
+    if profile.role != RoleEnum.PROFESOR:
+        teacher_choices = (
+            ProfileModel.query.filter_by(institution_id=profile.institution_id, role=RoleEnum.PROFESOR)
+            .order_by(ProfileModel.full_name.asc())
+            .all()
+        )
+
+    lessons_query = (
+        Lesson.query.filter_by(institution_id=profile.institution_id)
+        .order_by(Lesson.class_date.desc(), Lesson.start_time.asc())
+    )
+    if profile.role == RoleEnum.PROFESOR:
+        lessons_query = lessons_query.filter_by(teacher_profile_id=profile.id)
+    lessons = lessons_query.limit(60).all()
+
+    if request.method == "POST":
+        title = (request.form.get("lesson_title") or "").strip()
+        description = (request.form.get("lesson_description") or "").strip() or None
+        class_date = _safe_parse_date(request.form.get("lesson_date"))
+        start_time = _safe_parse_time(request.form.get("lesson_start_time"))
+        end_time = _safe_parse_time(request.form.get("lesson_end_time"))
+        section_id = request.form.get("section_id")
+        objective_id = request.form.get("objective_id")
+        teacher_id_raw = request.form.get("teacher_profile_id")
+
+        if not title or not class_date:
+            flash("Completá el título y la fecha de la clase.", "error")
+            return redirect(url_for("clases"))
+        if start_time and end_time and end_time <= start_time:
+            flash("El horario de fin debe ser posterior al inicio.", "error")
+            return redirect(url_for("clases"))
+
+        section = None
+        if section_id:
+            section = Section.query.get(int(section_id))
+            if not section or section.grade.institution_id != profile.institution_id:
+                flash("Seleccioná una sección válida.", "error")
+                return redirect(url_for("clases"))
+
+        objective = None
+        if objective_id:
+            objective = Objective.query.get(int(objective_id))
+            if not objective or objective.study_plan.institution_id != profile.institution_id:
+                flash("Seleccioná un objetivo válido.", "error")
+                return redirect(url_for("clases"))
+
+        teacher_profile_id = None
+        if profile.role == RoleEnum.PROFESOR:
+            teacher_profile_id = profile.id
+        elif teacher_id_raw:
+            teacher = ProfileModel.query.filter_by(
+                id=int(teacher_id_raw), institution_id=profile.institution_id, role=RoleEnum.PROFESOR
+            ).first()
+            if not teacher:
+                flash("Seleccioná un docente válido.", "error")
+                return redirect(url_for("clases"))
+            teacher_profile_id = teacher.id
+
+        lesson = Lesson(
+            institution_id=profile.institution_id,
+            section_id=section.id if section else None,
+            teacher_profile_id=teacher_profile_id,
+            objective_id=objective.id if objective else None,
+            title=title,
+            description=description,
+            class_date=class_date,
+            start_time=start_time,
+            end_time=end_time,
+        )
+        db.session.add(lesson)
+        db.session.commit()
+        flash("Clase programada correctamente.", "success")
+        return redirect(url_for("clases"))
+
+    return render_template(
+        "clases.html",
+        lessons=lessons,
+        sections=sections,
+        objectives=objectives,
+        teacher_choices=teacher_choices,
+        can_assign_teacher=profile.role != RoleEnum.PROFESOR,
+        is_admin=_has_admin_role(profile),
+    )
+
+
 @app.route("/tareas", methods=["GET", "POST"])
 @login_required
 def tareas():
@@ -318,6 +463,9 @@ def tareas():
         description = request.form.get("description")
         due_date_raw = request.form.get("due_date")
         max_points = request.form.get("max_points")
+        help_low = (request.form.get("help_text_low") or "").strip() or None
+        help_medium = (request.form.get("help_text_medium") or "").strip() or None
+        help_high = (request.form.get("help_text_high") or "").strip() or None
 
         lesson = Lesson.query.get(int(lesson_id)) if lesson_id else None
         if not lesson or lesson.institution_id != profile.institution_id or not title:
@@ -340,6 +488,9 @@ def tareas():
             description=description,
             due_date=due_date,
             max_points=max_points_val,
+            help_text_low=help_low,
+            help_text_medium=help_medium,
+            help_text_high=help_high,
         )
         db.session.add(task)
         db.session.flush()
@@ -1018,7 +1169,7 @@ def plan_view():
     if not profile:
         abort(403)
 
-    from models import StudyPlan, Objective, Grade, RoleEnum, CurriculumDocument
+    from models import StudyPlan, Objective, Grade, RoleEnum, CurriculumDocument, PlanDocument
 
     editable_roles = {
         getattr(RoleEnum, "PROFESOR", None),
@@ -1035,6 +1186,56 @@ def plan_view():
         .all()
     )
 
+    def _process_plan_document(plan: StudyPlan, curriculum_document: CurriculumDocument, *, subject_hint: str | None, original_filename: str | None):
+        if not curriculum_document:
+            return False
+        hint = (subject_hint or "").strip() or None
+        plan_document = PlanDocument(
+            study_plan_id=plan.id,
+            institution_id=plan.institution_id,
+            curriculum_document_id=curriculum_document.id,
+            title=hint or curriculum_document.title or plan.name,
+            original_filename=original_filename or curriculum_document.source_filename,
+            subject_hint=hint,
+        )
+        db.session.add(plan_document)
+        db.session.commit()
+
+        try:
+            _, created_items = PlanParserService.persist_plan_document(
+                study_plan=plan,
+                plan_document=plan_document,
+                institution_id=plan.institution_id,
+                nombre=plan.name,
+                anio_lectivo=str(plan.year) if plan.year else None,
+                jurisdiccion=plan.jurisdiction,
+                descripcion_general=plan.description,
+                raw_text=curriculum_document.raw_text or "",
+            )
+            plan.curriculum_document_id = curriculum_document.id
+            db.session.commit()
+            flash(
+                f"Documento «{plan_document.title}» estructurado automáticamente ({created_items} fragmentos detectados).",
+                "success",
+            )
+            return True
+        except Exception as exc:
+            current_app.logger.exception("No se pudo estructurar el plan con IA: %s", exc)
+            db.session.rollback()
+            flash("El documento se guardó, pero no pudimos extraer automáticamente las materias.", "warning")
+            return False
+
+    def _resolve_subject_hint(base_hint: str | None, file_storage):
+        hint = (base_hint or "").strip()
+        if hint:
+            return hint
+        if file_storage and getattr(file_storage, "filename", None):
+            filename = file_storage.filename.rsplit(".", 1)[0]
+            filename = filename.strip()
+            if filename:
+                return filename
+        return None
+
     if request.method == "POST" and can_edit:
         action = request.form.get("action")
         if action == "create_plan":
@@ -1043,13 +1244,18 @@ def plan_view():
             year_raw = request.form.get("plan_year")
             jurisdiction = (request.form.get("plan_jurisdiction") or "").strip()
             plan_text = (request.form.get("plan_text") or "").strip()
-            plan_file = request.files.get("plan_file")
+            plan_files = [fs for fs in request.files.getlist("plan_files") if fs and fs.filename]
+            legacy_file = request.files.get("plan_file")
+            if not plan_files and legacy_file and legacy_file.filename:
+                plan_files = [legacy_file]
+            plan_file_subject = (request.form.get("plan_file_subject") or "").strip()
+            plan_text_subject = (request.form.get("plan_text_subject") or "").strip()
 
             if not name:
                 flash("Completa el nombre del plan.", "error")
                 return redirect(url_for("plan_view"))
 
-            has_file = bool(plan_file and plan_file.filename)
+            has_file = bool(plan_files)
             has_text = bool(plan_text)
             if not (has_file or has_text):
                 flash("Subí el documento oficial (PDF/TXT) o pegá el texto completo antes de guardar el plan.", "error")
@@ -1071,21 +1277,26 @@ def plan_view():
             db.session.add(plan)
             db.session.commit()
 
-            file_uploaded = False
-            text_uploaded = False
+            processed_docs = 0
             if has_file:
-                try:
-                    document = CurriculumService.ingest_from_file(
-                        profile=profile,
-                        file_storage=plan_file,
-                        title=plan.name,
-                        jurisdiction=plan.jurisdiction,
-                        year=plan.year,
-                    )
-                    plan.curriculum_document_id = document.id
-                    file_uploaded = True
-                except Exception as exc:
-                    flash(f"No pudimos procesar el archivo: {exc}", "error")
+                for uploaded_file in plan_files:
+                    try:
+                        document = CurriculumService.ingest_from_file(
+                            profile=profile,
+                            file_storage=uploaded_file,
+                            title=plan.name,
+                            jurisdiction=plan.jurisdiction,
+                            year=plan.year,
+                        )
+                        if _process_plan_document(
+                            plan,
+                            document,
+                            subject_hint=_resolve_subject_hint(plan_file_subject, uploaded_file),
+                            original_filename=uploaded_file.filename,
+                        ):
+                            processed_docs += 1
+                    except Exception as exc:
+                        flash(f"No pudimos procesar el archivo {uploaded_file.filename or ''}: {exc}", "error")
 
             if has_text:
                 try:
@@ -1096,19 +1307,19 @@ def plan_view():
                         jurisdiction=plan.jurisdiction,
                         year=plan.year,
                     )
-                    plan.curriculum_document_id = document.id
-                    text_uploaded = True
+                    if _process_plan_document(
+                        plan,
+                        document,
+                        subject_hint=plan_text_subject or plan_file_subject,
+                        original_filename=None,
+                    ):
+                        processed_docs += 1
                 except Exception as exc:
                     flash(f"No pudimos guardar el texto: {exc}", "error")
 
-            if plan.curriculum_document_id:
-                db.session.commit()
-
             flash("Plan creado correctamente.", "success")
-            if file_uploaded:
-                flash("Archivo cargado y en procesamiento.", "success")
-            if text_uploaded:
-                flash("Texto curricular guardado.", "success")
+            if not processed_docs:
+                flash("El plan se guardó sin documentos. Podés adjuntarlos desde «Agregar documento».", "warning")
             return redirect(url_for("plan_view"))
 
         if action == "update_plan_document":
@@ -1122,31 +1333,39 @@ def plan_view():
                 flash("Plan inválido.", "error")
                 return redirect(url_for("plan_view"))
 
-            link_file = request.files.get("link_plan_file")
+            link_files = [fs for fs in request.files.getlist("link_plan_files") if fs and fs.filename]
+            legacy_link_file = request.files.get("link_plan_file")
+            if not link_files and legacy_link_file and legacy_link_file.filename:
+                link_files = [legacy_link_file]
             link_text = (request.form.get("link_plan_text") or "").strip()
+            link_file_subject = (request.form.get("link_plan_file_subject") or "").strip()
+            link_text_subject = (request.form.get("link_plan_text_subject") or "").strip()
 
-            if not ((link_file and link_file.filename) or link_text):
+            if not (link_files or link_text):
                 flash("Subí un archivo o pegá texto para vincular el plan.", "error")
                 return redirect(url_for("plan_view"))
 
-            linked = False
-            if plan.curriculum_document:
-                CurriculumService.delete_document(plan.curriculum_document)
-                plan.curriculum_document_id = None
-            if link_file and link_file.filename:
-                try:
-                    document = CurriculumService.ingest_from_file(
-                        profile=profile,
-                        file_storage=link_file,
-                        title=plan.name,
-                        jurisdiction=plan.jurisdiction,
-                        year=plan.year,
-                    )
-                    plan.curriculum_document_id = document.id
-                    linked = True
-                except Exception as exc:
-                    flash(f"No pudimos procesar el archivo: {exc}", "error")
-                    return redirect(url_for("plan_view"))
+            added_documents = 0
+            if link_files:
+                for uploaded_file in link_files:
+                    try:
+                        document = CurriculumService.ingest_from_file(
+                            profile=profile,
+                            file_storage=uploaded_file,
+                            title=plan.name,
+                            jurisdiction=plan.jurisdiction,
+                            year=plan.year,
+                        )
+                        if _process_plan_document(
+                            plan,
+                            document,
+                            subject_hint=_resolve_subject_hint(link_file_subject, uploaded_file),
+                            original_filename=uploaded_file.filename,
+                        ):
+                            added_documents += 1
+                    except Exception as exc:
+                        flash(f"No pudimos procesar el archivo {uploaded_file.filename or ''}: {exc}", "error")
+                        continue
 
             if link_text:
                 try:
@@ -1157,17 +1376,52 @@ def plan_view():
                         jurisdiction=plan.jurisdiction,
                         year=plan.year,
                     )
-                    plan.curriculum_document_id = document.id
-                    linked = True
+                    if _process_plan_document(
+                        plan,
+                        document,
+                        subject_hint=link_text_subject or link_file_subject,
+                        original_filename=None,
+                    ):
+                        added_documents += 1
                 except Exception as exc:
                     flash(f"No pudimos guardar el texto: {exc}", "error")
                     return redirect(url_for("plan_view"))
 
-            if linked:
-                db.session.commit()
-                flash("Documento vinculado al plan.", "success")
+            if added_documents:
+                flash("Documento agregado al plan.", "success")
             else:
-                flash("No pudimos vincular el documento.", "error")
+                flash("No pudimos agregar el documento. Intentá nuevamente.", "error")
+            return redirect(url_for("plan_view"))
+
+        if action == "delete_plan_document":
+            plan_document_id = request.form.get("plan_document_id")
+            plan_document = PlanDocument.query.get(plan_document_id)
+            if (
+                not plan_document
+                or not plan_document.study_plan
+                or plan_document.institution_id != profile.institution_id
+            ):
+                flash("Documento inválido.", "error")
+                return redirect(url_for("plan_view"))
+
+            plan = plan_document.study_plan
+            try:
+                CurriculumService.delete_document(plan_document.curriculum_document)
+                db.session.delete(plan_document)
+                db.session.flush()
+                remaining_docs = [
+                    doc for doc in plan.plan_documents if doc.id != plan_document.id
+                ]
+                if plan.curriculum_document_id == plan_document.curriculum_document_id:
+                    plan.curriculum_document_id = (
+                        remaining_docs[0].curriculum_document_id if remaining_docs else None
+                    )
+                db.session.commit()
+                flash("Documento eliminado del plan.", "success")
+            except Exception as exc:
+                current_app.logger.exception("No se pudo eliminar el documento del plan: %s", exc)
+                db.session.rollback()
+                flash("No pudimos eliminar el documento.", "error")
             return redirect(url_for("plan_view"))
 
         if action == "delete_plan":
@@ -1184,10 +1438,19 @@ def plan_view():
                 flash("Escribe el nombre exacto del plan y marca la casilla para eliminarlo.", "error")
                 return redirect(url_for("plan_view"))
 
-            document = plan.curriculum_document
+            documents_to_remove = []
+            if plan.curriculum_document:
+                documents_to_remove.append(plan.curriculum_document)
+            for doc in plan.plan_documents:
+                if doc.curriculum_document and doc.curriculum_document not in documents_to_remove:
+                    documents_to_remove.append(doc.curriculum_document)
+
             db.session.delete(plan)
-            if document:
-                CurriculumService.delete_document(document)
+            for curriculum_document in documents_to_remove:
+                try:
+                    CurriculumService.delete_document(curriculum_document)
+                except Exception as exc:
+                    current_app.logger.warning("No se pudo eliminar el documento del plan: %s", exc)
             db.session.commit()
             flash(f"Plan «{plan.name}» eliminado.", "success")
             return redirect(url_for("plan_view"))
@@ -1273,6 +1536,7 @@ def plan_view():
 
     plans = (
         StudyPlan.query.filter_by(institution_id=profile.institution_id)
+        .options(joinedload(StudyPlan.parsed_plan))
         .order_by(StudyPlan.year.desc().nullslast())
         .all()
     )
@@ -1306,6 +1570,7 @@ def plan_view():
                 "periods": period_list,
                 "timeline": timeline,
                 "grade_labels": grade_labels,
+                "documents": plan.plan_documents,
             }
         )
 

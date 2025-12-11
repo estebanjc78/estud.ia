@@ -1,7 +1,9 @@
-from flask import request, jsonify
-from flask_login import login_required
+from flask import request, jsonify, abort
+from flask_login import login_required, current_user
 from extensions import db
-from models import Lesson, Objective
+from models import Lesson, Objective, Section
+from services.authoring_service import AuthoringService
+from api.services.profile_service import ProfileService
 from . import api_bp
 
 
@@ -98,8 +100,50 @@ def list_lessons_by_objective(objective_id):
         for l in lessons
     ])
 
+
+@api_bp.post("/lessons/ai/brief")
+@login_required
+def lesson_ai_brief():
+    profile = _require_profile()
+    data = request.json or {}
+    lesson_id = data.get("lesson_id")
+    objective_id = data.get("objective_id")
+    section_id = data.get("section_id")
+    title = (data.get("title") or "").strip() or None
+
+    lesson = Lesson.query.get(lesson_id) if lesson_id else None
+    if lesson and lesson.institution_id != profile.institution_id:
+        return jsonify({"error": "Clase inválida para este perfil."}), 403
+
+    objective = Objective.query.get(objective_id) if objective_id else None
+    if objective and objective.study_plan.institution_id != profile.institution_id:
+        return jsonify({"error": "Objetivo inválido."}), 403
+
+    section_label = None
+    if section_id:
+        section = Section.query.get(section_id)
+        if not section or section.grade.institution_id != profile.institution_id:
+            return jsonify({"error": "Sección inválida."}), 403
+        grade_name = section.grade.name if section.grade else None
+        section_label = f"{grade_name or 'Grupo'} · {section.name}"
+
+    brief = AuthoringService.generate_lesson_brief(
+        lesson=lesson,
+        objective=objective,
+        section_label=section_label,
+        title=title,
+    )
+    return jsonify(brief)
+
 from . import api_bp
 
 @api_bp.get("/debug/lessons")
 def debug_lessons():
     return {"lessons": "ok"}
+
+
+def _require_profile():
+    try:
+        return ProfileService.require_profile(current_user.id)
+    except ValueError as exc:
+        abort(403, description=str(exc))

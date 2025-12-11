@@ -80,6 +80,34 @@
                         </div>
                     </div>
                 {% endif %}
+                <div style="margin-top:16px;">
+                    <h4 style="margin:0 0 8px;">Documentos vinculados</h4>
+                    {% if card.plan.plan_documents %}
+                        <div style="display:flex; flex-direction:column; gap:10px;">
+                            {% for doc in card.plan.plan_documents %}
+                                <div style="border:1px solid var(--brand-border); border-radius:12px; padding:12px; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                                    <div style="min-width:220px;">
+                                        <strong>{{ doc.title }}</strong>
+                                        <p class="muted" style="margin:4px 0 0;">
+                                            {{ doc.subject_hint or "Sin materia definida" }}
+                                            {% if doc.original_filename %} · {{ doc.original_filename }}{% endif %}
+                                        </p>
+                                        <small class="muted">Subido el {{ doc.created_at.strftime("%d/%m/%Y") if doc.created_at else "sin fecha" }}</small>
+                                    </div>
+                                    {% if can_edit %}
+                                        <form method="post" onsubmit="return confirm('¿Eliminar este documento del plan?');">
+                                            <input type="hidden" name="action" value="delete_plan_document">
+                                            <input type="hidden" name="plan_document_id" value="{{ doc.id }}">
+                                            <button class="btn btn-secondary btn-small" type="submit" style="background:#dc2626; border-color:#dc2626;">Eliminar</button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="muted" style="margin:0;">Aún no hay documentos vinculados.</p>
+                    {% endif %}
+                </div>
                 {% for period in card.periods %}
                     <div style="margin-top:16px;">
                         <h4 style="margin:0 0 8px;">{{ period.label }}</h4>
@@ -194,13 +222,22 @@
             <textarea name="plan_description" placeholder="Resumen o notas generales del plan."></textarea>
         </div>
         <div style="grid-column:1 / -1; border-top:1px solid var(--brand-border); padding-top:12px;">
-            <label>Adjuntar documento oficial (PDF/TXT)</label>
-            <input type="file" name="plan_file" accept=".pdf,.txt">
-            <small class="muted">Subí un único archivo grande y lo segmentamos automáticamente.</small>
+            <label>Adjuntar documentos oficiales (PDF/TXT)</label>
+            <input type="file" name="plan_files" accept=".pdf,.txt" multiple>
+            <small class="muted">Podés seleccionar varios archivos a la vez (uno por materia). Los procesamos en paralelo.</small>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Etiqueta / materia para los archivos</label>
+            <input type="text" name="plan_file_subject" placeholder="Ej: Matemática 4° grado">
+            <small class="muted">Si subís varios archivos, usamos esta etiqueta como prefijo. Si la dejás vacía, usamos el nombre de cada archivo.</small>
         </div>
         <div style="grid-column:1 / -1;">
             <label>Pegar texto</label>
             <textarea name="plan_text" rows="5" placeholder="Pegá el contenido si lo tenés en formato texto."></textarea>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Etiqueta / materia del texto pegado</label>
+            <input type="text" name="plan_text_subject" placeholder="Ej: Ciencias Sociales 5°">
         </div>
         <div style="grid-column:1 / -1;">
             <button class="btn btn-primary" type="submit">Guardar plan</button>
@@ -209,8 +246,8 @@
 </div>
 
 <div class="card">
-    <h3 style="margin-top:0;">Vincular documento a un plan existente</h3>
-    <p class="muted">Seleccioná el plan y adjuntá un PDF/TXT o pegá el texto. No reutilizamos documentos previos: cada plan debe subir su versión oficial.</p>
+    <h3 style="margin-top:0;">Agregar documento a un plan existente</h3>
+    <p class="muted">Seleccioná el plan y adjuntá un PDF/TXT o pegá texto adicional. Podés cargar tantos documentos como materias tenga el plan.</p>
     <form method="post" enctype="multipart/form-data" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <input type="hidden" name="action" value="update_plan_document">
         <div>
@@ -223,16 +260,25 @@
             </select>
         </div>
         <div style="grid-column:1 / -1; border-top:1px solid var(--brand-border); padding-top:12px;">
-            <label>Subir nuevo archivo (PDF/TXT)</label>
-            <input type="file" name="link_plan_file" accept=".pdf,.txt">
-            <small class="muted">Adjuntá el mismo documento que usa el colegio. Cada plan guarda su propio archivo.</small>
+            <label>Subir nuevos archivos (PDF/TXT)</label>
+            <input type="file" name="link_plan_files" accept=".pdf,.txt" multiple>
+            <small class="muted">Podés adjuntar varios documentos en una sola acción.</small>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Etiqueta / materia para los archivos</label>
+            <input type="text" name="link_plan_file_subject" placeholder="Ej: Inglés 6°">
+            <small class="muted">Usamos este texto como prefijo. Si lo dejás vacío, usamos el nombre de cada archivo.</small>
         </div>
         <div style="grid-column:1 / -1;">
             <label>Pegar texto</label>
             <textarea name="link_plan_text" rows="4" placeholder="Pegá el contenido si lo tenés en formato texto."></textarea>
         </div>
         <div style="grid-column:1 / -1;">
-            <button class="btn btn-secondary" type="submit">Vincular documento</button>
+            <label>Etiqueta / materia del texto</label>
+            <input type="text" name="link_plan_text_subject" placeholder="Ej: Educación Digital">
+        </div>
+        <div style="grid-column:1 / -1;">
+            <button class="btn btn-secondary" type="submit">Agregar documento</button>
         </div>
     </form>
 </div>
@@ -247,7 +293,9 @@
             <select name="plan_id" id="objective_plan_select" required>
                 <option value="">Selecciona</option>
                 {% for plan in plan_options %}
-                    <option value="{{ plan.id }}">{{ plan.name }} {% if plan.year %}({{ plan.year }}){% endif %}</option>
+                    <option value="{{ plan.id }}" data-plan-structured-id="{{ plan.parsed_plan.id if plan.parsed_plan else '' }}">
+                        {{ plan.name }} {% if plan.year %}({{ plan.year }}){% endif %}
+                    </option>
                 {% endfor %}
             </select>
         </div>
@@ -337,9 +385,17 @@
 
     let areaData = [];
 
+    function getStructuredPlanId() {
+        if (!planSelect || planSelect.selectedIndex < 0) {
+            return null;
+        }
+        const option = planSelect.options[planSelect.selectedIndex];
+        return option ? option.dataset.planStructuredId || null : null;
+    }
+
     function resetSuggestions(message) {
         areaData = [];
-        areaSelect.innerHTML = '<option value=\"\">Selecciona</option><option value=\"__custom__\">Otra área...</option>';
+        areaSelect.innerHTML = '<option value="">Selecciona</option><option value="__custom__">Otra área...</option>';
         areaSelect.disabled = true;
         areaCustomWrapper.style.display = 'none';
         areaCustomInput.value = '';
@@ -350,7 +406,7 @@
 
     function populateAreaSelect() {
         areaSelect.disabled = areaData.length === 0;
-        const options = ['<option value=\"\">Selecciona</option>'];
+        const options = ['<option value="">Selecciona</option>'];
         areaData.forEach(area => {
             options.push(`<option value=\"${area.area}\">${area.area}</option>`);
         });
@@ -396,7 +452,7 @@
                     </div>
                     <button type="button" class="btn btn-secondary btn-small">Usar</button>
                 </div>
-                <p style="margin:10px 0; white-space:pre-line;">${suggestion.description || 'Sin descripción disponible.'}</p>
+                <p style="margin:10px 0; white-space:pre-line;">${suggestion.description || suggestion.descripcion || 'Sin descripción disponible.'}</p>
                 <div style="font-size:0.85rem;">
                     <strong>Ideas de clase</strong>
                     <ul style="margin:6px 0 0 18px; padding:0;">
@@ -417,7 +473,7 @@
             titleInput.value = suggestion.title || '';
         }
         if (descriptionInput) {
-            descriptionInput.value = suggestion.description || '';
+            descriptionInput.value = suggestion.description || suggestion.descripcion || '';
             descriptionInput.focus();
         }
         if (periodInput) {
@@ -435,10 +491,15 @@
             resetSuggestions();
             return;
         }
+        const structuredId = getStructuredPlanId();
+        if (!structuredId) {
+            resetSuggestions('Este plan todavía no tiene materias detectadas. Subí o vincula el documento oficial para habilitarlas.');
+            return;
+        }
         suggestionsStatus.textContent = 'Buscando contenidos detectados en el plan...';
         suggestionsList.innerHTML = '';
         try {
-            const response = await fetch(`/plan/${planId}/grade/${gradeId}/segments`);
+            const response = await fetch(`/api/planes/${structuredId}/sugerencias?grade_id=${gradeId}`);
             if (!response.ok) {
                 let errorMessage = 'No pudimos obtener objetivos automáticos para esta combinación.';
                 try {

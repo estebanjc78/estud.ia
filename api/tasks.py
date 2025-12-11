@@ -5,7 +5,7 @@ from datetime import datetime
 from flask import request, jsonify, abort
 from flask_login import login_required, current_user
 from extensions import db
-from models import Task, Lesson
+from models import Task, Lesson, Objective
 from . import api_bp
 
 from api.services.messages_service import MessageService
@@ -13,6 +13,7 @@ from api.services.profile_service import ProfileService
 from api.services.attachment_service import AttachmentService
 from api.utils.messages_helper import serialize_message
 from api.utils.attachments_helper import serialize_attachment
+from services.authoring_service import AuthoringService
 
 
 @api_bp.post("/lessons/<int:lesson_id>/tasks")
@@ -76,6 +77,10 @@ def create_task(lesson_id):
         due_date=due_date,
         max_points=max_points,
     )
+    helps_payload = data.get("helps") if isinstance(data.get("helps"), dict) else {}
+    task.help_text_low = data.get("help_text_low") or helps_payload.get("BAJA") or helps_payload.get("low")
+    task.help_text_medium = data.get("help_text_medium") or helps_payload.get("MEDIA") or helps_payload.get("medium")
+    task.help_text_high = data.get("help_text_high") or helps_payload.get("ALTA") or helps_payload.get("high")
 
     db.session.add(task)
     db.session.flush()  # Necesitamos el ID para adjuntos
@@ -121,6 +126,33 @@ def list_tasks(lesson_id):
     tasks = Task.query.filter_by(lesson_id=lesson_id).all()
 
     return jsonify([_serialize_task(t) for t in tasks])
+
+
+@api_bp.post("/tasks/ai/brief")
+@login_required
+def task_ai_brief():
+    profile = _require_current_profile()
+    data = request.json or {}
+
+    lesson = Lesson.query.get(data.get("lesson_id")) if data.get("lesson_id") else None
+    if lesson and lesson.institution_id != profile.institution_id:
+        return jsonify({"error": "Clase inválida para este perfil."}), 403
+
+    objective = Objective.query.get(data.get("objective_id")) if data.get("objective_id") else None
+    if objective and objective.study_plan.institution_id != profile.institution_id:
+        return jsonify({"error": "Objetivo inválido."}), 403
+
+    task = Task.query.get(data.get("task_id")) if data.get("task_id") else None
+    if task and task.institution_id != profile.institution_id:
+        return jsonify({"error": "Tarea inválida."}), 403
+
+    brief = AuthoringService.generate_task_brief(
+        task=task,
+        lesson=lesson,
+        objective=objective,
+        due_date=data.get("due_date"),
+    )
+    return jsonify(brief)
 
 
 # 🔹 THREAD DE MENSAJES ASOCIADO A UNA TAREA
@@ -278,6 +310,9 @@ def _serialize_task(task: Task) -> dict:
         "description": task.description,
         "due_date": task.due_date.isoformat() if task.due_date else None,
         "max_points": task.max_points,
+        "help_text_low": task.help_text_low,
+        "help_text_medium": task.help_text_medium,
+        "help_text_high": task.help_text_high,
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "attachments": [serialize_attachment(att) for att in (task.attachments or [])],
         "submissions": len(task.submissions or []),

@@ -1,5 +1,6 @@
 from extensions import db
 
+
 class StudyPlan(db.Model):
     __tablename__ = "study_plan"
 
@@ -19,6 +20,13 @@ class StudyPlan(db.Model):
     objectives = db.relationship("Objective", back_populates="study_plan", cascade="all, delete-orphan")
     grade = db.relationship("Grade")
     curriculum_document = db.relationship("CurriculumDocument")
+    parsed_plan = db.relationship("Plan", back_populates="study_plan", uselist=False)
+    plan_documents = db.relationship(
+        "PlanDocument",
+        back_populates="study_plan",
+        cascade="all, delete-orphan",
+        order_by="PlanDocument.created_at.desc()",
+    )
 
 
 class Objective(db.Model):

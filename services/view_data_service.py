@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import asc, desc
 
@@ -25,6 +25,8 @@ class ViewDataService:
     @staticmethod
     def teacher_dashboard(profile: Profile) -> dict:
         lessons_query = Lesson.query.filter_by(teacher_profile_id=profile.id)
+        today = date.today()
+        week_limit = today + timedelta(days=7)
 
         clases_hoy = (
             lessons_query.filter(Lesson.class_date == date.today())
@@ -33,12 +35,30 @@ class ViewDataService:
             .all()
         )
         todas_las_clases = lessons_query.order_by(desc(Lesson.class_date)).all()
+        lessons_upcoming = (
+            lessons_query.filter(Lesson.class_date >= today)
+            .order_by(asc(Lesson.class_date), asc(Lesson.start_time))
+            .limit(5)
+            .all()
+        )
+        lessons_week = (
+            lessons_query.filter(Lesson.class_date.between(today, week_limit)).count()
+        )
 
         tasks = (
             Task.query.join(Lesson)
             .filter(Lesson.teacher_profile_id == profile.id)
             .order_by(asc(Task.due_date))
             .all()
+        )
+        tasks_upcoming = sorted(
+            tasks,
+            key=lambda task: ((task.due_date or date.max)),
+        )[:5]
+        tasks_active = sum(
+            1
+            for task in tasks
+            if task.due_date is None or task.due_date >= today
         )
 
         submissions = (
@@ -47,6 +67,15 @@ class ViewDataService:
             .order_by(TaskSubmission.submitted_at.desc())
             .limit(10)
             .all()
+        )
+        submissions_pending = (
+            TaskSubmission.query.join(Task)
+            .join(Lesson, Lesson.id == Task.lesson_id)
+            .filter(
+                Lesson.teacher_profile_id == profile.id,
+                TaskSubmission.points_awarded.is_(None),
+            )
+            .count()
         )
 
         students = (
@@ -76,14 +105,40 @@ class ViewDataService:
             .all()
         )
 
+        overdue_tasks = (
+            Task.query.join(Lesson)
+            .filter(
+                Lesson.teacher_profile_id == profile.id,
+                Task.due_date.isnot(None),
+                Task.due_date < today,
+            )
+            .count()
+        )
+        alerts = []
+        if overdue_tasks:
+            alerts.append(f"{overdue_tasks} tareas vencidas pendientes de cierre.")
+        if submissions_pending:
+            alerts.append(f"{submissions_pending} entregas esperan corrección.")
+        if not alerts:
+            alerts = ["Sin alertas críticas para hoy."]
+
         return {
             "clases_hoy": clases_hoy,
             "lessons": todas_las_clases,
+            "lessons_upcoming": lessons_upcoming,
             "tasks": tasks,
+            "tasks_upcoming": tasks_upcoming,
             "submissions": submissions,
             "students": students,
             "bitacora_entries": bitacora_entries,
             "recent_messages": recent_messages,
+            "metrics": {
+                "lessons_today": len(clases_hoy),
+                "lessons_week": lessons_week,
+                "tasks_active": tasks_active,
+                "pending_reviews": submissions_pending,
+            },
+            "alerts": alerts,
         }
 
     @staticmethod

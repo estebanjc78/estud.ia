@@ -4,13 +4,14 @@
 
 {% block content_header %}
 <div class="card" style="display:flex; flex-direction:column; gap:8px;">
-    <div class="pill">Gestión de tareas</div>
-    <h1 style="margin:0;">Organiza actividades, adjuntos y evidencias</h1>
+    <div class="pill">Gestión institucional</div>
+    <h1 style="margin:0;">Registro de tareas y evidencias</h1>
     <p class="muted" style="margin:0;">
-        Este módulo listará todas las tareas creadas para cada clase, mostrando entrega, adjuntos y puntaje máximo.
+        Centralizá las tareas oficiales de cada clase, definí fechas de entrega y adjuntá guías o rúbricas para toda la institución.
     </p>
     <div style="display:flex; gap:10px; flex-wrap:wrap;">
         <a class="btn btn-primary" href="#taskForm">Nueva tarea</a>
+        <a class="btn btn-secondary" href="{{ url_for('clases') }}">Programar clase</a>
         <a class="btn btn-secondary" href="{{ url_for('profe') }}">Volver al panel</a>
     </div>
 </div>
@@ -28,6 +29,7 @@
                 <th>Entrega</th>
                 <th>Puntos</th>
                 <th>Adjuntos</th>
+                <th>Ayudas IA</th>
             </tr>
             </thead>
             <tbody>
@@ -44,6 +46,26 @@
                             {% endfor %}
                         {% else %}
                             0
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if task.help_text_low or task.help_text_medium or task.help_text_high %}
+                            <details>
+                                <summary style="cursor:pointer;">Ver niveles</summary>
+                                <ul style="margin:6px 0 0 16px; padding:0; list-style:disc;">
+                                    {% if task.help_text_low %}
+                                        <li><strong>Baja:</strong> {{ task.help_text_low }}</li>
+                                    {% endif %}
+                                    {% if task.help_text_medium %}
+                                        <li><strong>Media:</strong> {{ task.help_text_medium }}</li>
+                                    {% endif %}
+                                    {% if task.help_text_high %}
+                                        <li><strong>Alta:</strong> {{ task.help_text_high }}</li>
+                                    {% endif %}
+                                </ul>
+                            </details>
+                        {% else %}
+                            --
                         {% endif %}
                     </td>
                 </tr>
@@ -74,7 +96,11 @@
         </div>
         <div style="grid-column:1 / -1;">
             <label>Descripción</label>
-            <textarea name="description"></textarea>
+            <textarea name="description" id="task_description_field" placeholder="Consigna principal y criterios de entrega."></textarea>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+                <button class="btn btn-secondary" type="button" id="task_ai_button">Generar con IA</button>
+                <small class="muted" id="task_ai_status"></small>
+            </div>
         </div>
         <div>
             <label>Fecha de entrega</label>
@@ -83,6 +109,18 @@
         <div>
             <label>Puntos máximos</label>
             <input type="number" name="max_points" min="0" value="100">
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Ayuda BAJA</label>
+            <textarea name="help_text_low" id="task_help_low" placeholder="Pista breve para los alumnos."></textarea>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Ayuda MEDIA</label>
+            <textarea name="help_text_medium" id="task_help_medium" placeholder="Secuencia de pasos guiados."></textarea>
+        </div>
+        <div style="grid-column:1 / -1;">
+            <label>Ayuda ALTA</label>
+            <textarea name="help_text_high" id="task_help_high" placeholder="Explicación completa del procedimiento."></textarea>
         </div>
         <div>
             <label>Archivo guía</label>
@@ -95,4 +133,58 @@
     </form>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+(function() {
+    const aiBtn = document.getElementById("task_ai_button");
+    if (!aiBtn) {
+        return;
+    }
+    const descriptionField = document.getElementById("task_description_field");
+    const statusLabel = document.getElementById("task_ai_status");
+    const lessonSelect = document.querySelector('select[name="lesson_id"]');
+    const dueInput = document.querySelector('input[name="due_date"]');
+    const maxPointsInput = document.querySelector('input[name="max_points"]');
+    const helpLow = document.getElementById("task_help_low");
+    const helpMedium = document.getElementById("task_help_medium");
+    const helpHigh = document.getElementById("task_help_high");
+
+    aiBtn.addEventListener("click", async () => {
+        statusLabel.textContent = "Generando sugerencias...";
+        aiBtn.disabled = true;
+        try {
+            const response = await fetch("/api/tasks/ai/brief", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    lesson_id: lessonSelect ? lessonSelect.value || null : null,
+                    due_date: dueInput ? dueInput.value || null : null,
+                    max_points: maxPointsInput ? maxPointsInput.value || null : null,
+                }),
+            });
+            if (!response.ok) {
+                throw new Error("No pudimos obtener la sugerencia.");
+            }
+            const data = await response.json();
+            if (data.description && descriptionField) {
+                descriptionField.value = data.description;
+            }
+            if (data.helps) {
+                if (data.helps.BAJA && helpLow) helpLow.value = data.helps.BAJA;
+                if (data.helps.MEDIA && helpMedium) helpMedium.value = data.helps.MEDIA;
+                if (data.helps.ALTA && helpHigh) helpHigh.value = data.helps.ALTA;
+            }
+            statusLabel.textContent = "Listo. Revisá y ajustá antes de guardar.";
+        } catch (error) {
+            console.error(error);
+            statusLabel.textContent = "No logramos generar la sugerencia.";
+        } finally {
+            aiBtn.disabled = false;
+        }
+    });
+})();
+</script>
 {% endblock %}

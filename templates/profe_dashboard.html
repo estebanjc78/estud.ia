@@ -4,19 +4,43 @@
 
 {% block content_header %}
 <div class="card" style="display:flex; flex-direction:column; gap:8px;">
-    <div class="pill">Panel profesor</div>
-    <h1 style="margin:0;">Hola {{ current_profile.full_name if current_profile and current_profile.full_name else current_display_name }}, esto es lo que pasa hoy</h1>
+    <div class="pill">Panel docente</div>
+    <h1 style="margin:0;">Agenda pedagógica del día</h1>
     <p class="muted" style="margin:0;">
-        El tablero reúne actividad de clases, uso de ayudas y mensajes clave para que puedas tomar decisiones rápidas.
+        {{ current_profile.full_name if current_profile and current_profile.full_name else current_display_name }}, aquí concentramos las clases, alertas y seguimientos institucionales para tomar decisiones rápidas.
     </p>
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
-        <a class="btn btn-primary" href="{{ url_for('tareas') }}">Crear tarea</a>
-        <a class="btn btn-secondary" href="#">Nueva nota de bitácora</a>
+        <a class="btn btn-primary" href="{{ url_for('clases') }}">Programar clase</a>
+        <a class="btn btn-secondary" href="{{ url_for('tareas') }}">Crear tarea</a>
+        <a class="btn btn-secondary" href="#bitacora">Nueva nota de bitácora</a>
     </div>
 </div>
 {% endblock %}
 
 {% block content %}
+<div class="grid two" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+    <div class="card" style="padding:18px;">
+        <span class="muted">Clases de hoy</span>
+        <h2 style="margin:6px 0 4px;">{{ metrics.lessons_today }}</h2>
+        <small class="muted">Sesiones programadas</small>
+    </div>
+    <div class="card" style="padding:18px;">
+        <span class="muted">Clases próximas (7 días)</span>
+        <h2 style="margin:6px 0 4px;">{{ metrics.lessons_week }}</h2>
+        <small class="muted">Incluye talleres y refuerzos</small>
+    </div>
+    <div class="card" style="padding:18px;">
+        <span class="muted">Tareas activas</span>
+        <h2 style="margin:6px 0 4px;">{{ metrics.tasks_active }}</h2>
+        <small class="muted">Con fecha igual o posterior a hoy</small>
+    </div>
+    <div class="card" style="padding:18px;">
+        <span class="muted">Entregas por corregir</span>
+        <h2 style="margin:6px 0 4px;">{{ metrics.pending_reviews }}</h2>
+        <small class="muted">Submissions sin calificar</small>
+    </div>
+</div>
+
 <div class="grid two">
     <div class="card">
         <h2>Clases de hoy</h2>
@@ -33,8 +57,8 @@
             {% for clase in clases_hoy or [] %}
                 <tr>
                     <td>{{ clase.title }}</td>
-                    <td>{{ clase.section.name if clase.section else "Sin sección" }}</td>
-                    <td>{{ clase.start_time or "--" }}</td>
+                    <td>{{ clase.section.name if clase.section else "General" }}</td>
+                    <td>{{ clase.start_time.strftime("%H:%M") if clase.start_time else "--" }}</td>
                 </tr>
             {% else %}
                 <tr><td colspan="3" class="muted">No registramos clases para hoy.</td></tr>
@@ -44,11 +68,65 @@
     </div>
 
     <div class="card">
-        <h2>Alertas rápidas</h2>
+        <h2>Alertas operativas</h2>
         <ul style="padding-left:18px; margin:0;">
-            <li class="muted">Sin entregas atrasadas detectadas.</li>
-            <li class="muted">Aún no configuraste mensajes a familias.</li>
+            {% for alert in alerts %}
+                <li>{{ alert }}</li>
+            {% endfor %}
         </ul>
+    </div>
+</div>
+
+<div class="grid two">
+    <div class="card">
+        <h2 style="margin:0 0 8px;">Próximas clases</h2>
+        {% if lessons_upcoming %}
+            <table>
+                <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Clase</th>
+                    <th>Sección</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for lesson in lessons_upcoming %}
+                    <tr>
+                        <td>{{ lesson.class_date or "--" }}</td>
+                        <td>{{ lesson.title }}</td>
+                        <td>{{ lesson.section.name if lesson.section else "General" }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="muted">Aún no calendarizaste nuevas clases.</p>
+        {% endif %}
+    </div>
+    <div class="card">
+        <h2 style="margin:0 0 8px;">Próximas tareas</h2>
+        {% if tasks_upcoming %}
+            <table>
+                <thead>
+                <tr>
+                    <th>Entrega</th>
+                    <th>Tarea</th>
+                    <th>Clase</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for task in tasks_upcoming %}
+                    <tr>
+                        <td>{{ task.due_date or "Sin fecha" }}</td>
+                        <td>{{ task.title }}</td>
+                        <td>{{ task.lesson.title if task.lesson else "General" }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p class="muted">No hay tareas activas próximas.</p>
+        {% endif %}
     </div>
 </div>
 

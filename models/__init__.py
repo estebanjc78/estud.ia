@@ -6,6 +6,7 @@ from .bitacora import BitacoraEntrada, BitacoraCategoria
 from .lesson import Lesson
 from .messages import Message, MessageThread, MessageThreadParticipant
 from .study_plan import StudyPlan, Objective
+from .plan import Plan, PlanItem, PlanDocument
 from .task import Task
 from .attachment import Attachment
 from .task_submission import (
@@ -38,6 +39,9 @@ __all__ = [
     "MessageThread",
     "MessageThreadParticipant",
     "StudyPlan",
+    "Plan",
+    "PlanDocument",
+    "PlanItem",
     "Objective",
     "Task",
     "TaskSubmission",
