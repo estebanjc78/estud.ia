@@ -20,28 +20,54 @@
 <div class="card">
     <h2 style="margin-top:0;">Consigna y materiales</h2>
     <p style="white-space:pre-wrap;">{{ task.description or "El profesor aún no agregó descripción." }}</p>
-    {% if task.attachments %}
-        <div style="margin-top:12px;">
-            <strong>Archivos adjuntos:</strong>
-            <ul style="margin:6px 0 0 18px;">
-                {% for attachment in task.attachments %}
-                    <li>
-                        <a href="{{ attachment.storage_path }}" target="_blank">
-                            {{ attachment.filename }}
-                        </a>
-                    </li>
-                {% endfor %}
-            </ul>
-        </div>
-    {% else %}
+    {% set gallery_images = image_attachments[1:] if image_attachments|length > 1 else [] %}
+    {% set has_materials = featured_attachment or gallery_images or file_attachments %}
+    {% if not has_materials %}
         <p class="muted">Sin adjuntos por ahora.</p>
+    {% else %}
+        {% if featured_attachment %}
+            <figure class="task-hero">
+                <img src="{{ featured_attachment.storage_path }}" alt="{{ featured_attachment.filename }}" loading="lazy">
+                <figcaption>
+                    <span class="pill">Recurso destacado</span>
+                    <a href="{{ featured_attachment.storage_path }}" target="_blank" rel="noopener" class="muted">
+                        Abrir imagen en nueva pestaña
+                    </a>
+                </figcaption>
+            </figure>
+        {% endif %}
+        {% if gallery_images %}
+            <div class="task-gallery">
+                {% for attachment in gallery_images %}
+                    <a href="{{ attachment.storage_path }}" target="_blank" rel="noopener" class="task-thumb" style="background-image:url('{{ attachment.storage_path }}');">
+                        <span>{{ attachment.filename }}</span>
+                    </a>
+                {% endfor %}
+            </div>
+        {% endif %}
+        {% if file_attachments %}
+            <div class="task-files">
+                <strong>Otros adjuntos:</strong>
+                <ul>
+                    {% for attachment in file_attachments %}
+                        <li>
+                            <a href="{{ attachment.storage_path }}" target="_blank" rel="noopener">
+                                {{ attachment.filename }}
+                            </a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
     {% endif %}
 </div>
 
 <div class="card">
     <h2 style="margin-top:0;">Solicitar ayuda inteligente</h2>
+    {% set detail_meta = help_detail_meta or {} %}
     <p class="muted" style="margin:0;">
-        Elegí la intensidad y el estilo para que el sistema registre cada pista y actualice tus puntos disponibles.
+        Elegí la intensidad y el estilo para que el sistema registre cada pista y actualice tus puntos disponibles.<br>
+        <strong>Modo configurado:</strong> {{ detail_meta.label or "Guiada" }} · {{ detail_meta.description or "Las ayudas entregan 2-3 pasos claros sin resolver la actividad." }}
     </p>
     <div id="helpPanel" style="margin-top:12px; display:flex; flex-direction:column; gap:12px;">
         <div style="display:flex; flex-wrap:wrap; gap:18px; align-items:center;">
@@ -69,9 +95,9 @@
         <div>
             <span class="muted">Intensidad de ayuda</span>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:8px; margin-top:6px;" id="levelButtons">
-                <button type="button" class="btn btn-primary" data-level="BAJA">Ayuda baja (-5 pts)</button>
-                <button type="button" class="btn btn-primary" data-level="MEDIA">Ayuda media (-10 pts)</button>
-                <button type="button" class="btn btn-primary" data-level="ALTA">Ayuda alta (-15 pts)</button>
+                <button type="button" class="btn btn-secondary" data-level="BAJA" data-label="Ayuda baja (-5 pts)">Ayuda baja (-5 pts)</button>
+                <button type="button" class="btn btn-secondary" data-level="MEDIA" data-label="Ayuda media (-10 pts)">Ayuda media (-10 pts)</button>
+                <button type="button" class="btn btn-secondary" data-level="ALTA" data-label="Ayuda alta (-15 pts)">Ayuda alta (-15 pts)</button>
             </div>
         </div>
         <div style="display:flex; gap:16px; flex-wrap:wrap;">
@@ -83,6 +109,20 @@
                     </div>
                 </div>
             {% endfor %}
+        </div>
+        <div class="help-action-row">
+            <button type="button" class="btn btn-primary" id="generateHelpBtn">Generar ayuda con IA</button>
+            <span class="muted" id="helpStatus">
+                {% if detail_meta %}
+                    Modo {{ detail_meta.label }}: {{ detail_meta.description }}. Seleccioná estilo e intensidad para recibir una pista.
+                {% else %}
+                    Seleccioná estilo e intensidad para recibir una pista.
+                {% endif %}
+            </span>
+        </div>
+        <div id="helpResult" class="ai-help-card" hidden>
+            <div class="ai-help-meta muted" id="helpResultMeta"></div>
+            <p class="ai-help-body" id="helpResultBody"></p>
         </div>
         <small class="muted" id="helpFeedback"></small>
     </div>
@@ -142,15 +182,27 @@
 {{ super() }}
 <script>
 (function() {
-    const endpoint = "{{ url_for('alumno_help_summary', task_id=task.id) }}";
+    const summaryEndpoint = "{{ url_for('alumno_help_summary', task_id=task.id) }}";
+    const generateEndpoint = "{{ url_for('alumno_generate_help', task_id=task.id) }}";
     const state = {{ help_summary | tojson }};
     let selectedStyle = state.preferred_style || "VISUAL";
+    let pendingLevel = null;
+    let isGenerating = false;
+    const detailLabel = {{ (help_detail_meta.label if help_detail_meta else "") | tojson }};
+    const detailDescription = {{ (help_detail_meta.description if help_detail_meta else "") | tojson }};
     const styleButtons = document.querySelectorAll("#styleButtons [data-style]");
     const levelButtons = document.querySelectorAll("#levelButtons [data-level]");
     const helpCounts = document.querySelectorAll("[data-help-count]");
     const helpPoints = document.getElementById("helpPoints");
     const helpPenalty = document.getElementById("helpPenalty");
     const feedback = document.getElementById("helpFeedback");
+    const helpStatus = document.getElementById("helpStatus");
+    const generateButton = document.getElementById("generateHelpBtn");
+    const helpResult = document.getElementById("helpResult");
+    const helpResultMeta = document.getElementById("helpResultMeta");
+    const helpResultBody = document.getElementById("helpResultBody");
+    const levelLabels = {BAJA: "Ayuda baja", MEDIA: "Ayuda media", ALTA: "Ayuda alta"};
+    const styleLabels = {VISUAL: "Visual", ANALITICA: "Analítica", AUDIO: "Audio"};
 
     function render(nextState) {
         if (!nextState) return;
@@ -181,7 +233,7 @@
 
     async function postPayload(payload) {
         try {
-            const response = await fetch(endpoint, {
+            const response = await fetch(summaryEndpoint, {
                 method: "POST",
                 headers: {"Content-Type": "application/json"},
                 body: JSON.stringify(payload),
@@ -202,14 +254,73 @@
             const style = btn.dataset.style;
             selectedStyle = style;
             postPayload({learning_style: style});
+            helpStatus.textContent = `Preferencia guardada: estilo ${styleLabels[style] || style}.`;
         });
     });
 
     levelButtons.forEach((btn) => {
         btn.addEventListener("click", () => {
-            const level = btn.dataset.level;
-            postPayload({help_level: level, learning_style: selectedStyle});
+            pendingLevel = btn.dataset.level;
+            levelButtons.forEach((node) => {
+                const isActive = node === btn;
+                node.classList.toggle("btn-primary", isActive);
+                node.classList.toggle("btn-secondary", !isActive);
+            });
+            helpStatus.textContent = `${btn.dataset.label || levelLabels[pendingLevel] || pendingLevel}. Ahora presioná “Generar ayuda con IA”.`;
+            feedback.textContent = "";
         });
+    });
+
+    generateButton?.addEventListener("click", async () => {
+        if (isGenerating) {
+            return;
+        }
+        if (!pendingLevel) {
+            helpStatus.textContent = "Elegí antes la intensidad de ayuda.";
+            return;
+        }
+        isGenerating = true;
+        generateButton.disabled = true;
+        helpStatus.textContent = "Generando ayuda personalizada...";
+        try {
+            const response = await fetch(generateEndpoint, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({help_level: pendingLevel, learning_style: selectedStyle}),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || "No se pudo generar la ayuda.");
+            }
+            if (data.summary) {
+                render(data.summary);
+            }
+            const levelLabel = levelLabels[data.help_level] || data.help_level;
+            const styleLabel = styleLabels[data.learning_style] || data.learning_style;
+            const detailLabelResponse = data.help_detail_label || detailLabel;
+            const metaSegments = [`${levelLabel}`, `Estilo ${styleLabel}`];
+            if (detailLabelResponse) {
+                metaSegments.push(`Modo ${detailLabelResponse}`);
+            }
+            helpResultMeta.textContent = metaSegments.join(" · ");
+            helpResultBody.textContent = data.help_text || "No hay contenido disponible para esta ayuda.";
+            helpResult.hidden = false;
+            const detailDesc = data.help_detail_description || detailDescription;
+            const statusIntro = data.source === "ai"
+                ? "Ayuda generada con IA."
+                : "Mostrando la guía disponible para esta consigna.";
+            helpStatus.textContent = detailDesc ? `${statusIntro} ${detailDesc}` : statusIntro;
+            pendingLevel = null;
+            levelButtons.forEach((node) => {
+                node.classList.remove("btn-primary");
+                node.classList.add("btn-secondary");
+            });
+        } catch (error) {
+            helpStatus.textContent = error.message;
+        } finally {
+            generateButton.disabled = false;
+            isGenerating = false;
+        }
     });
 })();
 </script>

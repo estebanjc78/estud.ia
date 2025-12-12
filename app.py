@@ -25,6 +25,7 @@ from flask import (
 )
 from flask_migrate import Migrate
 from flask_login import current_user, login_required
+from werkzeug.utils import secure_filename
 
 from config import Config
 from extensions import db, login_manager
@@ -38,12 +39,31 @@ from services import (
     AIClient,
     save_logo,
 )
+from services.help_rules import (
+    HELP_DETAIL_MODE_ORDER,
+    HELP_DETAIL_MODES,
+    HELP_LEVEL_DEFAULTS,
+    HELP_LEVEL_LABELS,
+    STYLE_HINTS,
+    STYLE_LABELS,
+    DEFAULT_HELP_DETAIL_MODE,
+)
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import joinedload
 
 BASE_DIR = Path(__file__).resolve().parent
 if load_dotenv:
     load_dotenv(BASE_DIR / ".env", override=False)
+
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".heic")
+
+STUDENT_HELP_PROMPT = """
+Actúa como tutor pedagógico personalizado. Con la consigna, las ayudas base y los datos del nivel solicitado:
+- Redacta la respuesta en español neutro utilizando el modo de detalle indicado (Breve, Guiada o Completa) y su estructura.
+- Respeta el nivel de ayuda (BAJA = pista breve, MEDIA = guía intermedia, ALTA = explicación completa).
+- Ajusta el tono al estilo indicado (Visual, Analítica o Audio) y evita resolver todo por el alumno.
+Devuelve únicamente el texto listo para mostrar en pantalla.
+""".strip()
 
 
 def create_app() -> Flask:
@@ -249,6 +269,9 @@ def alumno_resolver(task_id: int):
     )
 
     help_summary = HelpUsageService.get_summary(task=task, student_profile=profile)
+    image_attachments, file_attachments = _split_task_attachments(task.attachments)
+    detail_mode = _task_help_detail_mode(task)
+    detail_meta = HELP_DETAIL_MODES.get(detail_mode, HELP_DETAIL_MODES[DEFAULT_HELP_DETAIL_MODE])
 
     return render_template(
         "alumno_resolver.html",
@@ -256,6 +279,11 @@ def alumno_resolver(task_id: int):
         last_submission=last_submission,
         alumno=profile.full_name,
         help_summary=help_summary,
+        featured_attachment=image_attachments[0] if image_attachments else None,
+        image_attachments=image_attachments,
+        file_attachments=file_attachments,
+        help_detail_mode=detail_mode,
+        help_detail_meta=detail_meta,
         is_admin=_has_admin_role(profile),
     )
 
@@ -304,6 +332,61 @@ def alumno_help_summary(task_id: int):
         return jsonify({"error": str(exc)}), 400
 
     return jsonify(summary)
+
+
+@app.post("/alumno/tarea/<int:task_id>/help/generate")
+@login_required
+def alumno_generate_help(task_id: int):
+    profile = _get_current_profile()
+    if not profile:
+        abort(403)
+
+    from models import Task
+
+    task = Task.query.get_or_404(task_id)
+    if task.institution_id != profile.institution_id:
+        abort(404)
+    if profile.section_id and task.section_id and task.section_id != profile.section_id:
+        abort(403)
+
+    data = request.get_json(silent=True) or {}
+    help_level = (data.get("help_level") or "").strip().upper()
+    learning_style = (data.get("learning_style") or "").strip().upper() or None
+
+    if not help_level:
+        return jsonify({"error": "Elegí primero la intensidad de ayuda."}), 400
+
+    try:
+        summary = HelpUsageService.increment_usage(
+            task=task,
+            student_profile=profile,
+            help_level=help_level,
+            learning_style=learning_style,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    resolved_style = summary.get("preferred_style") or learning_style or "VISUAL"
+    help_text, source = _generate_student_help(
+        task=task,
+        help_level=help_level,
+        learning_style=resolved_style,
+    )
+    detail_mode = _task_help_detail_mode(task)
+    detail_meta = HELP_DETAIL_MODES.get(detail_mode, HELP_DETAIL_MODES[DEFAULT_HELP_DETAIL_MODE])
+
+    return jsonify(
+        {
+            "help_text": help_text,
+            "help_level": help_level,
+            "learning_style": resolved_style,
+            "source": source,
+            "summary": summary,
+            "help_detail_mode": detail_mode,
+            "help_detail_label": detail_meta.get("label"),
+            "help_detail_description": detail_meta.get("description"),
+        }
+    )
 
 
 @app.route("/clases", methods=["GET", "POST"])
@@ -466,6 +549,7 @@ def tareas():
         help_low = (request.form.get("help_text_low") or "").strip() or None
         help_medium = (request.form.get("help_text_medium") or "").strip() or None
         help_high = (request.form.get("help_text_high") or "").strip() or None
+        help_detail_mode = _normalize_help_detail_mode(request.form.get("help_detail_mode"))
 
         lesson = Lesson.query.get(int(lesson_id)) if lesson_id else None
         if not lesson or lesson.institution_id != profile.institution_id or not title:
@@ -491,6 +575,7 @@ def tareas():
             help_text_low=help_low,
             help_text_medium=help_medium,
             help_text_high=help_high,
+            help_detail_mode=help_detail_mode,
         )
         db.session.add(task)
         db.session.flush()
@@ -519,6 +604,10 @@ def tareas():
         lessons=lessons,
         can_create_tasks=can_create_tasks,
         is_admin=_has_admin_role(profile),
+        help_detail_modes=HELP_DETAIL_MODES,
+        help_detail_order=HELP_DETAIL_MODE_ORDER,
+        default_help_detail_mode=DEFAULT_HELP_DETAIL_MODE,
+        default_help_detail_index=HELP_DETAIL_MODE_ORDER.index(DEFAULT_HELP_DETAIL_MODE),
     )
 
 
@@ -2341,6 +2430,154 @@ def _build_recipient_groups(profile):
     if staff:
         groups.append({"label": "Equipo", "profiles": staff})
     return groups
+
+
+def _split_task_attachments(attachments):
+    images, files = [], []
+    for attachment in attachments or []:
+        if _is_image_attachment(attachment):
+            images.append(attachment)
+        else:
+            files.append(attachment)
+    return images, files
+
+
+def _task_help_detail_mode(task) -> str:
+    raw = getattr(task, "help_detail_mode", None)
+    return _normalize_help_detail_mode(raw)
+
+
+def _is_image_attachment(attachment) -> bool:
+    mime = (getattr(attachment, "mime_type", "") or "").lower()
+    if mime.startswith("image/"):
+        return True
+    name = (getattr(attachment, "filename", "") or "").lower()
+    return any(name.endswith(ext) for ext in IMAGE_EXTENSIONS)
+
+
+def _generate_student_help(*, task, help_level: str, learning_style: str):
+    """
+    Genera (o simula) la ayuda personalizada a partir de la consigna y el nivel solicitado.
+    """
+    normalized_level = (help_level or "").strip().upper() or "BAJA"
+    normalized_style = (learning_style or "").strip().upper() or "VISUAL"
+    base_help = _task_help_seed(task, normalized_level)
+    client = _ai_client_for_task(task)
+    detail_mode = _task_help_detail_mode(task)
+    detail_meta = HELP_DETAIL_MODES.get(detail_mode, HELP_DETAIL_MODES[DEFAULT_HELP_DETAIL_MODE])
+
+    payload = {
+        "scope": "student_help",
+        "task": {
+            "title": task.title,
+            "description": task.description,
+            "objective": getattr(task.objective, "title", None),
+            "lesson": getattr(task.lesson, "title", None),
+            "help_seed": base_help,
+            "max_points": task.max_points,
+            "due_date": task.due_date.isoformat() if task.due_date else None,
+        },
+        "help_level": normalized_level,
+        "learning_style": normalized_style,
+        "help_detail_mode": detail_mode,
+        "help_detail_label": detail_meta.get("label"),
+        "help_detail_description": detail_meta.get("description"),
+        "help_detail_structure": detail_meta.get("structure"),
+    }
+
+    try:
+        result = client.generate(STUDENT_HELP_PROMPT, payload)
+        if result.get("provider") == "openai" and result.get("text"):
+            return result["text"].strip(), "ai"
+    except Exception as exc:  # pragma: no cover - logging defensivo
+        current_app.logger.warning("AI help fallback (task=%s): %s", task.id, exc)
+
+    fallback_text = _fallback_help_text(
+        task=task,
+        help_level=normalized_level,
+        learning_style=normalized_style,
+        base_help=base_help,
+        detail_mode=detail_mode,
+        detail_meta=detail_meta,
+    )
+    return fallback_text, "fallback"
+
+
+def _task_help_seed(task, help_level: str) -> str | None:
+    level = help_level.upper()
+    if level == "BAJA":
+        return task.help_text_low
+    if level == "MEDIA":
+        return task.help_text_medium
+    if level == "ALTA":
+        return task.help_text_high
+    return None
+
+
+def _fallback_help_text(
+    *,
+    task,
+    help_level: str,
+    learning_style: str,
+    base_help: str | None,
+    detail_mode: str,
+    detail_meta: dict | None,
+):
+    level_label = HELP_LEVEL_LABELS.get(help_level, "Ayuda")
+    style_label = STYLE_LABELS.get(learning_style, "General")
+    topic = task.title or getattr(task.lesson, "title", None) or "esta consigna"
+    detail_info = detail_meta or HELP_DETAIL_MODES.get(detail_mode) or HELP_DETAIL_MODES[DEFAULT_HELP_DETAIL_MODE]
+
+    description = (task.description or "").strip().replace("\r", " ")
+    if description:
+        first_sentence = description.split("\n")[0].strip()
+        if len(first_sentence) > 240:
+            first_sentence = f"{first_sentence[:237]}..."
+    else:
+        first_sentence = None
+
+    core_text = base_help or HELP_LEVEL_DEFAULTS.get(help_level, HELP_LEVEL_DEFAULTS["BAJA"])
+    if base_help and first_sentence:
+        contextual_note = None
+    else:
+        contextual_note = first_sentence
+
+    style_tip = STYLE_HINTS.get(learning_style)
+    if style_tip:
+        style_tip = style_tip.format(topic=topic)
+
+    parts = [f"{level_label} · Estilo {style_label} · Modo {detail_info.get('label', '').strip() or detail_mode}"]
+    if detail_info.get("description"):
+        parts.append(detail_info["description"])
+    parts.append(core_text)
+    if contextual_note:
+        parts.append(f"Contexto: {contextual_note}")
+    scaffold_lines = []
+    for idx, template in enumerate(detail_info.get("structure") or [], start=1):
+        scaffold_lines.append(
+            f"{idx}. {template.format(topic=topic, style_tip=style_tip or '', base_help=core_text)}".strip()
+        )
+    if scaffold_lines:
+        parts.append("\n".join(scaffold_lines))
+    if style_tip:
+        parts.append(style_tip)
+    return "\n\n".join(part for part in parts if part).strip()
+
+
+def _ai_client_for_task(task):
+    institution = getattr(task, "institution", None)
+    provider = getattr(institution, "ai_provider", None) if institution else None
+    model = getattr(institution, "ai_model", None) if institution else None
+    return AIClient(provider_override=provider, model_override=model)
+
+
+def _normalize_help_detail_mode(value: str | None, fallback: str | None = DEFAULT_HELP_DETAIL_MODE) -> str:
+    if not value:
+        return fallback
+    normalized = value.strip().upper()
+    if normalized in HELP_DETAIL_MODES:
+        return normalized
+    return fallback
 
 
 def _get_form_bool(field_name: str, default: bool = True) -> bool:

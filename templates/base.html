@@ -221,6 +221,75 @@
             margin-top: 12px;
         }
 
+        .task-hero {
+            margin: 18px auto 0;
+            padding: 12px;
+            border-radius: 18px;
+            border: 1px solid var(--brand-border);
+            background: var(--brand-surface-alt);
+            max-width: min(520px, 100%);
+        }
+
+        .task-hero img {
+            width: 100%;
+            aspect-ratio: 3 / 4;
+            object-fit: cover;
+            display: block;
+            border-radius: 14px;
+        }
+
+        .task-hero figcaption {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding-top: 10px;
+        }
+
+        .task-gallery {
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 10px;
+        }
+
+        .task-thumb {
+            position: relative;
+            display: block;
+            min-height: 110px;
+            border-radius: 14px;
+            overflow: hidden;
+            background-size: cover;
+            background-position: center;
+            text-decoration: none;
+            color: white;
+        }
+
+        .task-thumb span {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            padding: 6px 8px;
+            font-size: 0.75rem;
+            background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.7));
+        }
+
+        .task-files ul {
+            margin: 6px 0 0 18px;
+            padding: 0;
+        }
+
+        .help-detail-slider {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .help-detail-slider input[type="range"] {
+            width: 100%;
+        }
+
         .grid {
             display: grid;
             gap: 18px;
@@ -397,6 +466,28 @@
         .flash-success {
             border-color: #22c55e66;
             background: #ecfdf5;
+        }
+
+        .help-action-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .ai-help-card {
+            margin-top: 10px;
+            border: 1px solid var(--brand-border);
+            border-radius: 18px;
+            padding: 14px 16px;
+            background: var(--brand-surface-alt);
+        }
+
+        .ai-help-body {
+            margin: 6px 0 0;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
         }
 
         .flash-error {

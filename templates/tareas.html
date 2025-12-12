@@ -29,11 +29,14 @@
                 <th>Entrega</th>
                 <th>Puntos</th>
                 <th>Adjuntos</th>
+                <th>Modo IA</th>
                 <th>Ayudas IA</th>
             </tr>
             </thead>
             <tbody>
             {% for task in tasks %}
+                {% set detail_mode = (task.help_detail_mode or default_help_detail_mode) %}
+                {% set detail_meta = help_detail_modes.get(detail_mode, help_detail_modes.get(default_help_detail_mode)) %}
                 <tr>
                     <td>{{ task.lesson.title if task.lesson else "Clase" }}</td>
                     <td>{{ task.title }}</td>
@@ -47,6 +50,14 @@
                         {% else %}
                             0
                         {% endif %}
+                    </td>
+                    <td>
+                        <span class="pill" style="background:rgba(79,70,229,0.12); color:#4338ca;">
+                            {{ detail_meta.label if detail_meta else detail_mode }}
+                        </span>
+                        <div class="muted" style="font-size:0.75rem;">
+                            {{ detail_meta.description if detail_meta else "" }}
+                        </div>
                     </td>
                     <td>
                         {% if task.help_text_low or task.help_text_medium or task.help_text_high %}
@@ -122,6 +133,21 @@
             <label>Ayuda ALTA</label>
             <textarea name="help_text_high" id="task_help_high" placeholder="Explicación completa del procedimiento."></textarea>
         </div>
+        <div style="grid-column:1 / -1;">
+            <label>Extensión sugerida de las ayudas</label>
+            <div class="help-detail-slider">
+                <input
+                    type="range"
+                    min="0"
+                    max="{{ help_detail_order|length - 1 }}"
+                    step="1"
+                    value="{{ default_help_detail_index }}"
+                    id="help_detail_slider"
+                >
+                <input type="hidden" name="help_detail_mode" id="help_detail_mode_field" value="{{ default_help_detail_mode }}">
+                <div class="muted" id="help_detail_caption"></div>
+            </div>
+        </div>
         <div>
             <label>Archivo guía</label>
             <input type="file" name="task_attachment">
@@ -129,7 +155,6 @@
         <div style="grid-column:1 / -1;">
             <button class="btn btn-primary" type="submit">Guardar tarea</button>
         </div>
-    </form>
     </form>
 </div>
 {% endif %}
@@ -140,9 +165,6 @@
 <script>
 (function() {
     const aiBtn = document.getElementById("task_ai_button");
-    if (!aiBtn) {
-        return;
-    }
     const descriptionField = document.getElementById("task_description_field");
     const statusLabel = document.getElementById("task_ai_status");
     const lessonSelect = document.querySelector('select[name="lesson_id"]');
@@ -151,40 +173,68 @@
     const helpLow = document.getElementById("task_help_low");
     const helpMedium = document.getElementById("task_help_medium");
     const helpHigh = document.getElementById("task_help_high");
+    if (aiBtn) {
+        aiBtn.addEventListener("click", async () => {
+            statusLabel.textContent = "Generando sugerencias...";
+            aiBtn.disabled = true;
+            try {
+                const response = await fetch("/api/tasks/ai/brief", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        lesson_id: lessonSelect ? lessonSelect.value || null : null,
+                        due_date: dueInput ? dueInput.value || null : null,
+                        max_points: maxPointsInput ? maxPointsInput.value || null : null,
+                    }),
+                });
+                if (!response.ok) {
+                    throw new Error("No pudimos obtener la sugerencia.");
+                }
+                const data = await response.json();
+                if (data.description && descriptionField) {
+                    descriptionField.value = data.description;
+                }
+                if (data.helps) {
+                    if (data.helps.BAJA && helpLow) helpLow.value = data.helps.BAJA;
+                    if (data.helps.MEDIA && helpMedium) helpMedium.value = data.helps.MEDIA;
+                    if (data.helps.ALTA && helpHigh) helpHigh.value = data.helps.ALTA;
+                }
+                statusLabel.textContent = "Listo. Revisá y ajustá antes de guardar.";
+            } catch (error) {
+                console.error(error);
+                statusLabel.textContent = "No logramos generar la sugerencia.";
+            } finally {
+                aiBtn.disabled = false;
+            }
+        });
+    }
 
-    aiBtn.addEventListener("click", async () => {
-        statusLabel.textContent = "Generando sugerencias...";
-        aiBtn.disabled = true;
-        try {
-            const response = await fetch("/api/tasks/ai/brief", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    lesson_id: lessonSelect ? lessonSelect.value || null : null,
-                    due_date: dueInput ? dueInput.value || null : null,
-                    max_points: maxPointsInput ? maxPointsInput.value || null : null,
-                }),
-            });
-            if (!response.ok) {
-                throw new Error("No pudimos obtener la sugerencia.");
-            }
-            const data = await response.json();
-            if (data.description && descriptionField) {
-                descriptionField.value = data.description;
-            }
-            if (data.helps) {
-                if (data.helps.BAJA && helpLow) helpLow.value = data.helps.BAJA;
-                if (data.helps.MEDIA && helpMedium) helpMedium.value = data.helps.MEDIA;
-                if (data.helps.ALTA && helpHigh) helpHigh.value = data.helps.ALTA;
-            }
-            statusLabel.textContent = "Listo. Revisá y ajustá antes de guardar.";
-        } catch (error) {
-            console.error(error);
-            statusLabel.textContent = "No logramos generar la sugerencia.";
-        } finally {
-            aiBtn.disabled = false;
+    const detailSlider = document.getElementById("help_detail_slider");
+    const detailField = document.getElementById("help_detail_mode_field");
+    const detailCaption = document.getElementById("help_detail_caption");
+    const detailOrder = {{ help_detail_order | tojson }};
+    const detailMeta = {{ help_detail_modes | tojson }};
+
+    function syncDetailMode() {
+        if (!detailSlider || !detailField || !detailCaption) {
+            return;
         }
-    });
+        const index = Math.min(
+            Math.max(parseInt(detailSlider.value, 10), 0),
+            detailOrder.length - 1
+        );
+        const mode = detailOrder[index] || "{{ default_help_detail_mode }}";
+        detailField.value = mode;
+        const meta = detailMeta[mode] || {};
+        const label = meta.label || mode;
+        const description = meta.description || "";
+        detailCaption.textContent = `${label}: ${description}`;
+    }
+
+    if (detailSlider) {
+        detailSlider.addEventListener("input", syncDetailMode);
+        syncDetailMode();
+    }
 })();
 </script>
 {% endblock %}

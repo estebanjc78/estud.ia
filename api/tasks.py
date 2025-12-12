@@ -14,6 +14,7 @@ from api.services.attachment_service import AttachmentService
 from api.utils.messages_helper import serialize_message
 from api.utils.attachments_helper import serialize_attachment
 from services.authoring_service import AuthoringService
+from services.help_rules import HELP_DETAIL_MODES, DEFAULT_HELP_DETAIL_MODE
 
 
 @api_bp.post("/lessons/<int:lesson_id>/tasks")
@@ -81,6 +82,7 @@ def create_task(lesson_id):
     task.help_text_low = data.get("help_text_low") or helps_payload.get("BAJA") or helps_payload.get("low")
     task.help_text_medium = data.get("help_text_medium") or helps_payload.get("MEDIA") or helps_payload.get("medium")
     task.help_text_high = data.get("help_text_high") or helps_payload.get("ALTA") or helps_payload.get("high")
+    task.help_detail_mode = _normalize_help_detail_mode(data.get("help_detail_mode"))
 
     db.session.add(task)
     db.session.flush()  # Necesitamos el ID para adjuntos
@@ -313,7 +315,17 @@ def _serialize_task(task: Task) -> dict:
         "help_text_low": task.help_text_low,
         "help_text_medium": task.help_text_medium,
         "help_text_high": task.help_text_high,
+        "help_detail_mode": task.help_detail_mode,
         "created_at": task.created_at.isoformat() if task.created_at else None,
         "attachments": [serialize_attachment(att) for att in (task.attachments or [])],
         "submissions": len(task.submissions or []),
     }
+
+
+def _normalize_help_detail_mode(raw):
+    if not raw:
+        return DEFAULT_HELP_DETAIL_MODE
+    normalized = str(raw).strip().upper()
+    if normalized in HELP_DETAIL_MODES:
+        return normalized
+    return DEFAULT_HELP_DETAIL_MODE

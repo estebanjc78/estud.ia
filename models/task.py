@@ -34,6 +34,7 @@ class Task(db.Model):
 
     # Puntaje máximo de la tarea
     max_points = db.Column(db.Integer, nullable=True)
+    help_detail_mode = db.Column(db.String(20), nullable=True, default="GUIADA")
 
     # Metadata
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
