@@ -288,6 +288,11 @@
 
         .help-detail-slider input[type="range"] {
             width: 100%;
+            margin-bottom: 4px;
+        }
+
+        .help-detail-slider .toggle-group {
+            margin-top: 4px;
         }
 
         .grid {
@@ -349,6 +354,11 @@
 
         .btn:active {
             transform: scale(0.98);
+        }
+
+        .btn-compact {
+            padding: 4px 12px;
+            font-size: 0.8rem;
         }
 
         input[type="text"],
@@ -476,11 +486,30 @@
         }
 
         .ai-help-card {
-            margin-top: 10px;
             border: 1px solid var(--brand-border);
             border-radius: 18px;
             padding: 14px 16px;
             background: var(--brand-surface-alt);
+        }
+
+        .ai-help-history {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .ai-help-grade-hint {
+            font-size: 0.8rem;
+            margin: 4px 0 0;
+        }
+
+        .ai-help-audio-controls {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
         }
 
         .ai-help-body {

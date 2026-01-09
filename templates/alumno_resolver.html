@@ -120,9 +120,11 @@
                 {% endif %}
             </span>
         </div>
-        <div id="helpResult" class="ai-help-card" hidden>
-            <div class="ai-help-meta muted" id="helpResultMeta"></div>
-            <p class="ai-help-body" id="helpResultBody"></p>
+        <div id="helpHistorySection" style="width:100%;">
+            <div id="helpHistory" class="ai-help-history" aria-live="polite" hidden></div>
+            <p class="muted" id="helpHistoryEmpty" style="margin-top:8px;">
+                Todavía no generaste ayudas en esta sesión.
+            </p>
         </div>
         <small class="muted" id="helpFeedback"></small>
     </div>
@@ -198,11 +200,18 @@
     const feedback = document.getElementById("helpFeedback");
     const helpStatus = document.getElementById("helpStatus");
     const generateButton = document.getElementById("generateHelpBtn");
-    const helpResult = document.getElementById("helpResult");
-    const helpResultMeta = document.getElementById("helpResultMeta");
-    const helpResultBody = document.getElementById("helpResultBody");
+    const helpHistoryContainer = document.getElementById("helpHistory");
+    const helpHistoryEmpty = document.getElementById("helpHistoryEmpty");
     const levelLabels = {BAJA: "Ayuda baja", MEDIA: "Ayuda media", ALTA: "Ayuda alta"};
     const styleLabels = {VISUAL: "Visual", ANALITICA: "Analítica", AUDIO: "Audio"};
+    const helpHistory = [];
+    const HISTORY_LIMIT = 5;
+    const SpeechCtor = window.SpeechSynthesisUtterance || window.webkitSpeechSynthesisUtterance;
+    const supportsSpeech = Boolean(window.speechSynthesis && SpeechCtor);
+    let speakingEntryId = null;
+    let activeUtterance = null;
+    let availableVoices = [];
+    const preferredVoiceTags = ["es-419", "es-US", "es-MX", "es-AR", "es-CL", "es-CO", "es-ES"];
 
     function render(nextState) {
         if (!nextState) return;
@@ -229,7 +238,201 @@
         });
     }
 
+    function resetAudioButtons() {
+        if (!helpHistoryContainer) {
+            return;
+        }
+        helpHistoryContainer.querySelectorAll("[data-audio-entry]").forEach((btn) => {
+            btn.textContent = "Escuchar";
+            btn.dataset.audioPlaying = "false";
+        });
+    }
+
+    function stopAudioPlayback() {
+        if (supportsSpeech && window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+        speakingEntryId = null;
+        activeUtterance = null;
+        resetAudioButtons();
+    }
+
+    function refreshVoices() {
+        if (!supportsSpeech || !window.speechSynthesis) {
+            return;
+        }
+        availableVoices = window.speechSynthesis.getVoices() || [];
+    }
+
+    function pickVoice() {
+        if (!availableVoices.length) {
+            return null;
+        }
+        for (const tag of preferredVoiceTags) {
+            const voice = availableVoices.find((item) =>
+                (item.lang || "").toLowerCase().startsWith(tag.toLowerCase())
+            );
+            if (voice) {
+                return voice;
+            }
+        }
+        return availableVoices[0];
+    }
+
+    function playAudioEntry(entry, button) {
+        if (!supportsSpeech || !SpeechCtor) {
+            return;
+        }
+        if (speakingEntryId === entry.id) {
+            stopAudioPlayback();
+            return;
+        }
+        stopAudioPlayback();
+        const utterance = new SpeechCtor(entry.help_text || "");
+        utterance.lang = "es-419";
+        const chosenVoice = pickVoice();
+        if (chosenVoice) {
+            utterance.voice = chosenVoice;
+            utterance.lang = chosenVoice.lang || utterance.lang;
+        }
+        const band = entry.grade && entry.grade.band;
+        if (band === "INICIAL" || band === "PRIMARIA_BAJA") {
+            utterance.rate = 0.9;
+        } else if (band === "SECUNDARIA_ALTA") {
+            utterance.rate = 1.05;
+        } else {
+            utterance.rate = 1;
+        }
+        utterance.onend = () => {
+            if (speakingEntryId === entry.id) {
+                stopAudioPlayback();
+            }
+        };
+        utterance.onerror = () => {
+            stopAudioPlayback();
+            helpStatus.textContent = "No pudimos reproducir el audio en este dispositivo.";
+        };
+        speakingEntryId = entry.id;
+        activeUtterance = utterance;
+        if (window.speechSynthesis) {
+            window.speechSynthesis.speak(utterance);
+        }
+        if (button) {
+            button.textContent = "Detener";
+            button.dataset.audioPlaying = "true";
+        }
+    }
+
+    function renderHelpHistory() {
+        if (!helpHistoryContainer) {
+            return;
+        }
+        helpHistoryContainer.innerHTML = "";
+        if (!helpHistory.length) {
+            helpHistoryContainer.hidden = true;
+            if (helpHistoryEmpty) {
+                helpHistoryEmpty.hidden = false;
+            }
+            return;
+        }
+        helpHistoryContainer.hidden = false;
+        if (helpHistoryEmpty) {
+            helpHistoryEmpty.hidden = true;
+        }
+        helpHistory.forEach((entry) => {
+            const card = document.createElement("div");
+            card.className = "ai-help-card";
+            const meta = document.createElement("div");
+            meta.className = "ai-help-meta muted";
+            const metaParts = [
+                entry.level_label,
+                `Estilo ${entry.style_label}`,
+            ];
+            if (entry.detail_label) {
+                metaParts.push(`Modo ${entry.detail_label}`);
+            }
+            if (entry.grade && entry.grade.label) {
+                metaParts.push(entry.grade.label);
+            }
+            meta.textContent = metaParts.filter(Boolean).join(" · ");
+            card.appendChild(meta);
+
+            if (entry.grade_hint) {
+                const hint = document.createElement("div");
+                hint.className = "ai-help-grade-hint muted";
+                hint.textContent = entry.grade_hint;
+                card.appendChild(hint);
+            }
+
+            const body = document.createElement("p");
+            body.className = "ai-help-body";
+            body.textContent = entry.help_text || "No hay contenido disponible para esta ayuda.";
+            card.appendChild(body);
+
+            if (entry.learning_style === "AUDIO") {
+                const controls = document.createElement("div");
+                controls.className = "ai-help-audio-controls";
+                if (supportsSpeech) {
+                    body.hidden = true;
+                    const playBtn = document.createElement("button");
+                    playBtn.type = "button";
+                    playBtn.className = "btn btn-secondary btn-compact";
+                    playBtn.dataset.audioEntry = entry.id;
+                    playBtn.dataset.audioPlaying = speakingEntryId === entry.id ? "true" : "false";
+                    playBtn.textContent = speakingEntryId === entry.id ? "Detener" : "Escuchar";
+                    playBtn.addEventListener("click", () => playAudioEntry(entry, playBtn));
+                    controls.appendChild(playBtn);
+                    const note = document.createElement("small");
+                    note.className = "muted";
+                    note.textContent = "Se reproduce con voz neutra del dispositivo.";
+                    controls.appendChild(note);
+                    const toggleTranscript = document.createElement("button");
+                    toggleTranscript.type = "button";
+                    toggleTranscript.className = "btn btn-secondary btn-compact";
+                    toggleTranscript.textContent = "Ver texto";
+                    toggleTranscript.addEventListener("click", () => {
+                        const nowHidden = !body.hidden;
+                        body.hidden = nowHidden;
+                        toggleTranscript.textContent = nowHidden ? "Ver texto" : "Ocultar texto";
+                    });
+                    controls.appendChild(toggleTranscript);
+                } else {
+                    const fallback = document.createElement("small");
+                    fallback.className = "muted";
+                    fallback.textContent = "Tu navegador no permite reproducir audio automáticamente; lee el guion.";
+                    body.hidden = false;
+                    controls.appendChild(fallback);
+                }
+                card.appendChild(controls);
+            }
+
+            helpHistoryContainer.appendChild(card);
+        });
+    }
+
+    function appendHelpEntry(payload) {
+        stopAudioPlayback();
+        const entry = {
+            id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            help_text: payload.help_text,
+            help_level: payload.help_level,
+            learning_style: payload.learning_style,
+            detail_label: payload.detail_label || null,
+            grade: payload.grade || null,
+            grade_hint: payload.grade_hint || null,
+            level_label: levelLabels[payload.help_level] || payload.help_level,
+            style_label: styleLabels[payload.learning_style] || payload.learning_style,
+        };
+        helpHistory.unshift(entry);
+        if (helpHistory.length > HISTORY_LIMIT) {
+            helpHistory.pop();
+        }
+        renderHelpHistory();
+        return entry;
+    }
+
     render(state);
+    renderHelpHistory();
 
     async function postPayload(payload) {
         try {
@@ -295,21 +498,29 @@
             if (data.summary) {
                 render(data.summary);
             }
-            const levelLabel = levelLabels[data.help_level] || data.help_level;
-            const styleLabel = styleLabels[data.learning_style] || data.learning_style;
             const detailLabelResponse = data.help_detail_label || detailLabel;
-            const metaSegments = [`${levelLabel}`, `Estilo ${styleLabel}`];
-            if (detailLabelResponse) {
-                metaSegments.push(`Modo ${detailLabelResponse}`);
-            }
-            helpResultMeta.textContent = metaSegments.join(" · ");
-            helpResultBody.textContent = data.help_text || "No hay contenido disponible para esta ayuda.";
-            helpResult.hidden = false;
+            const entry = appendHelpEntry({
+                help_text: data.help_text,
+                help_level: data.help_level,
+                learning_style: data.learning_style,
+                detail_label: detailLabelResponse,
+                grade: data.student_grade,
+                grade_hint: data.student_grade_hint,
+            });
             const detailDesc = data.help_detail_description || detailDescription;
             const statusIntro = data.source === "ai"
                 ? "Ayuda generada con IA."
                 : "Mostrando la guía disponible para esta consigna.";
-            helpStatus.textContent = detailDesc ? `${statusIntro} ${detailDesc}` : statusIntro;
+            if (entry.learning_style === "AUDIO") {
+                const audioTip = supportsSpeech
+                    ? " Usá el botón “Escuchar” del historial para oírla."
+                    : " Tu dispositivo no soporta audio automático, por eso mostramos el guion completo.";
+                helpStatus.textContent = `${statusIntro}${audioTip}`;
+            } else if (detailDesc) {
+                helpStatus.textContent = `${statusIntro} ${detailDesc}`;
+            } else {
+                helpStatus.textContent = statusIntro;
+            }
             pendingLevel = null;
             levelButtons.forEach((node) => {
                 node.classList.remove("btn-primary");
@@ -322,6 +533,46 @@
             isGenerating = false;
         }
     });
+
+    if (supportsSpeech) {
+        refreshVoices();
+        if (window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = refreshVoices;
+        }
+        window.addEventListener("beforeunload", stopAudioPlayback);
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                stopAudioPlayback();
+            }
+        });
+    }
+
+    const detailSlider = document.getElementById("help_detail_slider");
+    const detailField = document.getElementById("help_detail_mode_field");
+    const detailCaption = document.getElementById("help_detail_caption");
+    const detailOrder = {{ help_detail_order | tojson }};
+    const detailMeta = {{ help_detail_modes | tojson }};
+
+    function syncDetailMode() {
+        if (!detailSlider || !detailField || !detailCaption) {
+            return;
+        }
+        const index = Math.min(
+            Math.max(parseInt(detailSlider.value, 10), 0),
+            detailOrder.length - 1
+        );
+        const mode = detailOrder[index] || "{{ default_help_detail_mode }}";
+        detailField.value = mode;
+        const meta = detailMeta[mode] || {};
+        const label = meta.label || mode;
+        const description = meta.description || "";
+        detailCaption.textContent = `${label}: ${description}`;
+    }
+
+    if (detailSlider) {
+        detailSlider.addEventListener("input", syncDetailMode);
+        syncDetailMode();
+    }
 })();
 </script>
 {% endblock %}

@@ -139,11 +139,27 @@
                 <input
                     type="range"
                     min="0"
-                    max="{{ help_detail_order|length - 1 }}"
+                    max="{{ help_detail_max_index }}"
                     step="1"
                     value="{{ default_help_detail_index }}"
                     id="help_detail_slider"
                 >
+                <div class="toggle-group" id="help_detail_radios">
+                    {% for mode in help_detail_order %}
+                        {% set meta = help_detail_modes.get(mode) %}
+                        {% set mode_id = "help_detail_" + mode|lower %}
+                        <div>
+                            <input
+                                type="radio"
+                                name="help_detail_choice"
+                                id="{{ mode_id }}"
+                                value="{{ mode }}"
+                                {% if mode == default_help_detail_mode %}checked{% endif %}
+                            >
+                            <label for="{{ mode_id }}">{{ meta.label if meta else mode }}</label>
+                        </div>
+                    {% endfor %}
+                </div>
                 <input type="hidden" name="help_detail_mode" id="help_detail_mode_field" value="{{ default_help_detail_mode }}">
                 <div class="muted" id="help_detail_caption"></div>
             </div>
@@ -212,18 +228,23 @@
     const detailSlider = document.getElementById("help_detail_slider");
     const detailField = document.getElementById("help_detail_mode_field");
     const detailCaption = document.getElementById("help_detail_caption");
+    const detailRadios = document.querySelectorAll("#help_detail_radios input[type='radio']");
     const detailOrder = {{ help_detail_order | tojson }};
     const detailMeta = {{ help_detail_modes | tojson }};
 
-    function syncDetailMode() {
-        if (!detailSlider || !detailField || !detailCaption) {
+    function applyDetailMode(mode, {updateSlider = true, updateRadios = true} = {}) {
+        if (!detailField || !detailCaption) {
             return;
         }
-        const index = Math.min(
-            Math.max(parseInt(detailSlider.value, 10), 0),
-            detailOrder.length - 1
-        );
-        const mode = detailOrder[index] || "{{ default_help_detail_mode }}";
+        const index = detailOrder.indexOf(mode);
+        if (updateSlider && detailSlider && index >= 0) {
+            detailSlider.value = String(index);
+        }
+        if (updateRadios) {
+            detailRadios.forEach((radio) => {
+                radio.checked = radio.value === mode;
+            });
+        }
         detailField.value = mode;
         const meta = detailMeta[mode] || {};
         const label = meta.label || mode;
@@ -231,10 +252,31 @@
         detailCaption.textContent = `${label}: ${description}`;
     }
 
-    if (detailSlider) {
-        detailSlider.addEventListener("input", syncDetailMode);
-        syncDetailMode();
+    function syncDetailModeFromSlider() {
+        if (!detailSlider) {
+            return;
+        }
+        const index = Math.min(
+            Math.max(parseInt(detailSlider.value, 10), 0),
+            detailOrder.length - 1
+        );
+        const mode = detailOrder[index] || "{{ default_help_detail_mode }}";
+        applyDetailMode(mode, {updateSlider: false});
     }
+
+    if (detailSlider) {
+        detailSlider.addEventListener("input", syncDetailModeFromSlider);
+    }
+    if (detailRadios.length) {
+        detailRadios.forEach((radio) => {
+            radio.addEventListener("change", (event) => {
+                if (event.target.checked) {
+                    applyDetailMode(event.target.value, {updateRadios: false});
+                }
+            });
+        });
+    }
+    applyDetailMode(detailField?.value || "{{ default_help_detail_mode }}");
 })();
 </script>
 {% endblock %}

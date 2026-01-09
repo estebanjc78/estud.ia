@@ -62,6 +62,7 @@ Actúa como tutor pedagógico personalizado. Con la consigna, las ayudas base y 
 - Redacta la respuesta en español neutro utilizando el modo de detalle indicado (Breve, Guiada o Completa) y su estructura.
 - Respeta el nivel de ayuda (BAJA = pista breve, MEDIA = guía intermedia, ALTA = explicación completa).
 - Ajusta el tono al estilo indicado (Visual, Analítica o Audio) y evita resolver todo por el alumno.
+- Usa el campo student_grade_hint para adaptar vocabulario y extensión según el grado. Si indica primaria baja o inicial, mantén frases cortas (máx. 12 palabras) y ejemplos cotidianos.
 Devuelve únicamente el texto listo para mostrar en pantalla.
 """.strip()
 
@@ -284,6 +285,9 @@ def alumno_resolver(task_id: int):
         file_attachments=file_attachments,
         help_detail_mode=detail_mode,
         help_detail_meta=detail_meta,
+        help_detail_modes=HELP_DETAIL_MODES,
+        help_detail_order=HELP_DETAIL_MODE_ORDER,
+        default_help_detail_mode=DEFAULT_HELP_DETAIL_MODE,
         is_admin=_has_admin_role(profile),
     )
 
@@ -367,13 +371,16 @@ def alumno_generate_help(task_id: int):
         return jsonify({"error": str(exc)}), 400
 
     resolved_style = summary.get("preferred_style") or learning_style or "VISUAL"
-    help_text, source = _generate_student_help(
+    help_text, source, help_context = _generate_student_help(
         task=task,
         help_level=help_level,
         learning_style=resolved_style,
+        student_profile=profile,
     )
     detail_mode = _task_help_detail_mode(task)
     detail_meta = HELP_DETAIL_MODES.get(detail_mode, HELP_DETAIL_MODES[DEFAULT_HELP_DETAIL_MODE])
+    grade_meta = (help_context or {}).get("grade") if help_context else None
+    grade_hint = (help_context or {}).get("grade_hint") if help_context else None
 
     return jsonify(
         {
@@ -385,6 +392,8 @@ def alumno_generate_help(task_id: int):
             "help_detail_mode": detail_mode,
             "help_detail_label": detail_meta.get("label"),
             "help_detail_description": detail_meta.get("description"),
+            "student_grade": grade_meta,
+            "student_grade_hint": grade_hint,
         }
     )
 
@@ -608,6 +617,7 @@ def tareas():
         help_detail_order=HELP_DETAIL_MODE_ORDER,
         default_help_detail_mode=DEFAULT_HELP_DETAIL_MODE,
         default_help_detail_index=HELP_DETAIL_MODE_ORDER.index(DEFAULT_HELP_DETAIL_MODE),
+        help_detail_max_index=max(len(HELP_DETAIL_MODE_ORDER) - 1, 0),
     )
 
 
@@ -2455,7 +2465,7 @@ def _is_image_attachment(attachment) -> bool:
     return any(name.endswith(ext) for ext in IMAGE_EXTENSIONS)
 
 
-def _generate_student_help(*, task, help_level: str, learning_style: str):
+def _generate_student_help(*, task, help_level: str, learning_style: str, student_profile=None):
     """
     Genera (o simula) la ayuda personalizada a partir de la consigna y el nivel solicitado.
     """
@@ -2465,6 +2475,8 @@ def _generate_student_help(*, task, help_level: str, learning_style: str):
     client = _ai_client_for_task(task)
     detail_mode = _task_help_detail_mode(task)
     detail_meta = HELP_DETAIL_MODES.get(detail_mode, HELP_DETAIL_MODES[DEFAULT_HELP_DETAIL_MODE])
+    grade_info = _student_grade_info(student_profile)
+    grade_hint = _grade_language_hint(grade_info)
 
     payload = {
         "scope": "student_help",
@@ -2483,12 +2495,15 @@ def _generate_student_help(*, task, help_level: str, learning_style: str):
         "help_detail_label": detail_meta.get("label"),
         "help_detail_description": detail_meta.get("description"),
         "help_detail_structure": detail_meta.get("structure"),
+        "student_grade": grade_info,
+        "student_grade_hint": grade_hint,
     }
+    context_meta = {"grade": grade_info, "grade_hint": grade_hint}
 
     try:
         result = client.generate(STUDENT_HELP_PROMPT, payload)
         if result.get("provider") == "openai" and result.get("text"):
-            return result["text"].strip(), "ai"
+            return result["text"].strip(), "ai", context_meta
     except Exception as exc:  # pragma: no cover - logging defensivo
         current_app.logger.warning("AI help fallback (task=%s): %s", task.id, exc)
 
@@ -2499,8 +2514,10 @@ def _generate_student_help(*, task, help_level: str, learning_style: str):
         base_help=base_help,
         detail_mode=detail_mode,
         detail_meta=detail_meta,
+        grade_info=grade_info,
+        grade_hint=grade_hint,
     )
-    return fallback_text, "fallback"
+    return fallback_text, "fallback", context_meta
 
 
 def _task_help_seed(task, help_level: str) -> str | None:
@@ -2522,6 +2539,8 @@ def _fallback_help_text(
     base_help: str | None,
     detail_mode: str,
     detail_meta: dict | None,
+    grade_info: dict | None,
+    grade_hint: str | None,
 ):
     level_label = HELP_LEVEL_LABELS.get(help_level, "Ayuda")
     style_label = STYLE_LABELS.get(learning_style, "General")
@@ -2537,16 +2556,22 @@ def _fallback_help_text(
         first_sentence = None
 
     core_text = base_help or HELP_LEVEL_DEFAULTS.get(help_level, HELP_LEVEL_DEFAULTS["BAJA"])
+    core_text = _simplify_text_for_grade(core_text, grade_info)
     if base_help and first_sentence:
         contextual_note = None
     else:
         contextual_note = first_sentence
+    if contextual_note:
+        contextual_note = _simplify_text_for_grade(contextual_note, grade_info, max_sentences=1)
 
     style_tip = STYLE_HINTS.get(learning_style)
     if style_tip:
         style_tip = style_tip.format(topic=topic)
 
-    parts = [f"{level_label} · Estilo {style_label} · Modo {detail_info.get('label', '').strip() or detail_mode}"]
+    header = f"{level_label} · Estilo {style_label} · Modo {detail_info.get('label', '').strip() or detail_mode}"
+    parts = [header]
+    if grade_hint:
+        parts.append(grade_hint)
     if detail_info.get("description"):
         parts.append(detail_info["description"])
     parts.append(core_text)
@@ -2554,9 +2579,9 @@ def _fallback_help_text(
         parts.append(f"Contexto: {contextual_note}")
     scaffold_lines = []
     for idx, template in enumerate(detail_info.get("structure") or [], start=1):
-        scaffold_lines.append(
-            f"{idx}. {template.format(topic=topic, style_tip=style_tip or '', base_help=core_text)}".strip()
-        )
+        line = template.format(topic=topic, style_tip=style_tip or "", base_help=core_text)
+        line = _simplify_text_for_grade(line, grade_info, max_sentences=1)
+        scaffold_lines.append(f"{idx}. {line}".strip())
     if scaffold_lines:
         parts.append("\n".join(scaffold_lines))
     if style_tip:
@@ -2569,6 +2594,134 @@ def _ai_client_for_task(task):
     provider = getattr(institution, "ai_provider", None) if institution else None
     model = getattr(institution, "ai_model", None) if institution else None
     return AIClient(provider_override=provider, model_override=model)
+
+
+def _student_grade_info(student_profile):
+    if not student_profile:
+        return None
+    section = getattr(student_profile, "section", None)
+    grade = getattr(section, "grade", None)
+    grade_label = getattr(grade, "name", None)
+    section_label = getattr(section, "name", None)
+    level = getattr(grade, "level", None)
+    order = getattr(grade, "order_index", None)
+    numeric_order = _extract_numeric_grade(grade_label) or _extract_numeric_grade(section_label)
+    if order is None:
+        order = numeric_order
+    band = _grade_band(order, grade_label or section_label)
+    age_hint = _grade_age_hint(order)
+    info = {
+        "label": grade_label or section_label,
+        "level": level,
+        "order": order,
+        "band": band,
+        "age_hint": age_hint,
+    }
+    # Eliminamos claves sin valor para simplificar el JSON.
+    cleaned = {key: value for key, value in info.items() if value is not None}
+    return cleaned or None
+
+
+def _extract_numeric_grade(label: str | None) -> int | None:
+    if not label:
+        return None
+    match = re.search(r"(\d+)", label)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _grade_band(order: int | None, label: str | None) -> str | None:
+    if order is not None:
+        if order <= 1:
+            return "INICIAL"
+        if order <= 3:
+            return "PRIMARIA_BAJA"
+        if order <= 6:
+            return "PRIMARIA_ALTA"
+        if order <= 9:
+            return "SECUNDARIA_BAJA"
+        return "SECUNDARIA_ALTA"
+    if not label:
+        return None
+    lower = label.lower()
+    if any(word in lower for word in ("jard", "pre", "inicial")):
+        return "INICIAL"
+    if "prim" in lower:
+        return "PRIMARIA_BAJA"
+    if "sec" in lower or "media" in lower:
+        return "SECUNDARIA_BAJA"
+    return None
+
+
+def _grade_age_hint(order: int | None) -> str | None:
+    if order is None:
+        return None
+    age_map = {
+        0: "4-5 años",
+        1: "5-6 años",
+        2: "7 años",
+        3: "8 años",
+        4: "9 años",
+        5: "10 años",
+        6: "11 años",
+        7: "12 años",
+        8: "13 años",
+        9: "14 años",
+        10: "15 años",
+        11: "16 años",
+        12: "17 años",
+    }
+    return age_map.get(order)
+
+
+def _grade_language_hint(info: dict | None) -> str | None:
+    if not info:
+        return None
+    label = info.get("label") or info.get("level")
+    age_hint = info.get("age_hint")
+    band = info.get("band")
+    if label and age_hint:
+        base = f"Estudiante de {label} ({age_hint})"
+    elif label:
+        base = f"Estudiante de {label}"
+    elif age_hint:
+        base = f"Estudiante (~{age_hint})"
+    else:
+        base = "Estudiante"
+    tips = {
+        "INICIAL": "Usá palabras muy simples y ejemplos del día a día.",
+        "PRIMARIA_BAJA": "Mantené frases de hasta 12 palabras y dividí la explicación en pasos cortos.",
+        "PRIMARIA_ALTA": "Podés ampliar un poco el vocabulario, pero priorizá instrucciones claras.",
+        "SECUNDARIA_BAJA": "Incluí definiciones breves cuando aparezcan términos nuevos.",
+        "SECUNDARIA_ALTA": "Acepta conceptos abstractos, pero sé concreto en las recomendaciones.",
+    }
+    tip = tips.get(band)
+    return f"{base}. {tip}" if tip else base
+
+
+def _simplify_text_for_grade(text: str | None, grade_info: dict | None, max_sentences: int = 2) -> str | None:
+    if not text or not grade_info:
+        return text
+    band = grade_info.get("band")
+    if band not in {"INICIAL", "PRIMARIA_BAJA"}:
+        return text
+    fragments = re.split(r"(?<=[.!?])\s+", text.strip())
+    simplified = []
+    for fragment in fragments:
+        clean = fragment.strip()
+        if not clean:
+            continue
+        words = clean.split()
+        if len(words) > 14:
+            clean = " ".join(words[:14]) + "..."
+        simplified.append(clean)
+        if len(simplified) >= max_sentences:
+            break
+    return " ".join(simplified) if simplified else text
 
 
 def _normalize_help_detail_mode(value: str | None, fallback: str | None = DEFAULT_HELP_DETAIL_MODE) -> str:
